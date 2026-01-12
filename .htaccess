@@ -1,0 +1,16 @@
+# Disable Directory Listing
+Options -Indexes
+
+# Block sensitive files
+<Files ".env">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+<Files "config.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# Block access to includes directory directly (if needed)
+# RewriteRule ^includes/ - [F,L]
