@@ -78,6 +78,9 @@ try {
                 $stmtPerms->execute([$user['id']]);
                 $_SESSION['user_permissions'] = $stmtPerms->fetchAll(PDO::FETCH_COLUMN);
                 
+                // Define Protocol
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+                
                 // --- SEND WELCOME EMAIL ---
                 require_once 'includes/mailer.php';
                 $body = "
@@ -86,6 +89,13 @@ try {
                     <p>Olá, {$user['nome']}!</p>
                     <p>Obrigado por assinar o Church Digital. Seu pagamento foi confirmado e sua igreja (Matriz) já está ativa.</p>
                     <p>Aproveite todos os recursos para gerenciar sua igreja com excelência.</p>
+                    <br>
+                    <h3>📱 Instale o Aplicativo</h3>
+                    <p>Para facilitar o acesso, instale nosso App no seu celular:</p>
+                    <ul>
+                        <li><a href='{$protocol}{$_SERVER['HTTP_HOST']}/ChurchDigital/install.php'>Ver Passo a Passo de Instalação</a></li>
+                        <li><a href='{$protocol}{$_SERVER['HTTP_HOST']}/ChurchDigital/index.php?mode=pwa'><strong>Abrir App Direto</strong></a> (Se já estiver no celular)</li>
+                    </ul>
                     <br>
                     <p>Atenciosamente,<br>Equipe Church Digital</p>
                 </div>

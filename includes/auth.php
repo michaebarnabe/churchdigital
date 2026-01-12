@@ -32,7 +32,8 @@ function has_role($allowed_roles) {
     $map = [
         'admin' => 'Administrador',
         'tesoureiro' => 'Tesoureiro',
-        'secretario' => 'Secretário'
+        'secretario' => 'Secretário',
+        'membro' => 'Membro'
     ];
 
     $userRoles = $_SESSION['user_roles'] ?? []; // Array de nomes de papeis

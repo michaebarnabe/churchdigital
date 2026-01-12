@@ -4,7 +4,8 @@ define('ABSPATH', true);
 
 // Fetch Plans
 try {
-    $planos = $pdo->query("SELECT * FROM planos ORDER BY preco ASC")->fetchAll();
+    // Fetch Plans (Excluding Enterprise/Custom if needed by checking name or simple filter)
+    $planos = $pdo->query("SELECT * FROM planos WHERE nome NOT LIKE '%Enterprise%' ORDER BY preco ASC")->fetchAll();
 } catch (PDOException $e) {
     die("Erro ao carregar planos: " . $e->getMessage());
 }
@@ -36,31 +37,55 @@ try {
                 <img src="assets/icons/icon-512.png" class="h-8 w-8 rounded">
                 <span class="font-bold text-xl tracking-tight">ChurchDigital</span>
             </div>
-            <nav class="hidden md:flex gap-6 text-sm font-medium text-gray-500">
-                <a href="#" class="hover:text-black">Funcionalidades</a>
-                <a href="#" class="hover:text-black">Benefícios</a>
-                <a href="#" class="text-black font-bold">Preços</a>
-                <a href="index.php" class="hover:text-black">Entrar</a>
-            </nav>
-            <a href="index.php" class="bg-black text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800 transition shadow-lg">
+
+            <a href="login.php" class="bg-black text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800 transition shadow-lg">
                 Área do Cliente
             </a>
         </div>
     </header>
 
-    <!-- Hero -->
-    <div class="text-center py-16 px-4 bg-white">
-        <h1 class="text-4xl md:text-5xl font-extrabold mb-4">
-            Escolha o plano ideal para sua <span class="gradient-text">Igreja</span>
-        </h1>
-        <p class="text-xl text-gray-500 max-w-2xl mx-auto">
-            Comece pequeno e cresça conosco. Sem contratos de fidelidade, cancele quando quiser.
-        </p>
+    <!-- Hero Section (New) -->
+    <div class="bg-black text-white pt-20 pb-24 px-4 relative overflow-hidden">
+        <!-- Background Decor -->
+        <div class="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+        
+        <div class="max-w-4xl mx-auto text-center relative z-10">
+            <span class="bg-gray-800 text-gray-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest mb-4 inline-block">
+                Gestão Simplificada para Igrejas Pequenas e Médias
+            </span>
+            <h1 class="text-5xl md:text-6xl font-extrabold mb-6 leading-tight">
+                Sua Igreja Organizada, <br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Seus Membros Conectados.</span>
+            </h1>
+            <p class="text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+                Pare de sofrer com planilhas confusas e sistemas caros. Tenha fichas de membros, carteirinhas digitais, controle financeiro e <strong>Doações via PIX</strong> em um único lugar, acessível pelo celular.
+            </p>
+            
+            <div class="flex flex-col md:flex-row gap-4 justify-center items-center">
+                <?php 
+                // Find Free plan ID for CTA
+                $freePlanId = 1; // Default fallback
+                foreach($planos as $p) { if($p['preco'] == 0) $freePlanId = $p['id']; }
+                ?>
+                <a href="checkout_stripe.php?plan_id=<?php echo $freePlanId; ?>" class="px-8 py-4 bg-white text-black font-bold text-lg rounded-full shadow-lg hover:bg-gray-100 transform hover:scale-105 transition-all flex items-center gap-2">
+                    Criar Conta Grátis <i class="fas fa-arrow-right text-sm"></i>
+                </a>
+                <a href="#planos" class="px-8 py-4 bg-transparent border border-gray-700 text-white font-bold text-lg rounded-full hover:bg-gray-800 transition-colors">
+                    Ver Planos PRO
+                </a>
+            </div>
+            
+            <div class="mt-12 flex items-center justify-center gap-8 text-gray-500 text-sm font-medium opacity-70">
+                <span class="flex items-center gap-2"><i class="fas fa-check-circle text-green-500"></i> Sem cartão de crédito</span>
+                <span class="flex items-center gap-2"><i class="fas fa-check-circle text-green-500"></i> Cancele quando quiser</span>
+                <span class="flex items-center gap-2"><i class="fas fa-check-circle text-green-500"></i> Suporte humanizado</span>
+            </div>
+        </div>
     </div>
 
     <!-- Pricing Cards -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div id="planos" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 mt-8 relative z-20">
+        <div class="flex flex-wrap justify-center gap-8">
             
             <?php foreach($planos as $plan): ?>
             <?php 
@@ -73,8 +98,14 @@ try {
                     "App (PWA) para Membros",
                     "Suporte Prioritário"
                 ];
+                
+                // Add PRO features dynamically
+                if (strtolower($plan['nome']) == 'pro') {
+                    $features[] = "<strong>Novo:</strong> Receba Doações via PIX";
+                    $features[] = "Upload de Comprovantes";
+                }
             ?>
-            <div class="relative bg-white rounded-2xl shadow-xl border <?php echo $isPopular ? 'border-black scale-105 z-10' : 'border-gray-200'; ?> p-8 flex flex-col hover:border-black transition duration-300">
+            <div class="w-full max-w-sm relative bg-white rounded-2xl shadow-xl border <?php echo $isPopular ? 'border-black scale-105 z-10' : 'border-gray-200'; ?> p-8 flex flex-col hover:border-black transition duration-300">
                 
                 <?php if($isPopular): ?>
                 <div class="absolute top-0 right-0 -mt-3 mr-4 bg-black text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-md">
@@ -137,6 +168,11 @@ try {
             </div>
         </div>
     </div>
+
+    <!-- Floating WhatsApp -->
+    <a href="https://wa.me/5511949216688" target="_blank" class="fixed bottom-6 right-6 z-50 bg-green-500 text-white w-16 h-16 rounded-full shadow-lg hover:bg-green-600 hover:scale-110 transition duration-300 flex items-center justify-center animate-bounce">
+        <i class="fab fa-whatsapp text-4xl"></i>
+    </a>
 
 </body>
 </html>

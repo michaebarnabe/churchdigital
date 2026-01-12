@@ -22,21 +22,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
     $data_movimento = $_POST['data_movimento'] ?? date('Y-m-d');
     $membro_id = !empty($_POST['membro_id']) ? $_POST['membro_id'] : null;
     $igreja_id = TenantScope::getId();
+    $comprovante_url = null;
+
+    // Handle File Upload
+    if (isset($_FILES['comprovante']) && $_FILES['comprovante']['error'] === UPLOAD_ERR_OK) {
+        if (!PlanEnforcer::canUseFeature($pdo, 'upload_comprovantes')) {
+            PlanEnforcer::renderUpgradeModal("Upload de comprovantes é um recurso exclusivo dos planos PRO.");
+        }
+
+        $uploadDir = __DIR__ . '/../../uploads/comprovantes/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+
+        // Security Check
+        $ext = strtolower(pathinfo($_FILES['comprovante']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
+        
+        if (in_array($ext, $allowed)) {
+            $newInfo = uniqid() . '.' . $ext;
+            $dest = $uploadDir . $newInfo;
+            if (move_uploaded_file($_FILES['comprovante']['tmp_name'], $dest)) {
+                $comprovante_url = 'uploads/comprovantes/' . $newInfo;
+            }
+        }
+    }
 
     if ($valor) {
         if ($id && $action === 'update') {
             // UPDATE
-            $sql = "UPDATE financeiro_basico SET tipo=?, valor=?, descricao=?, data_movimento=?, membro_id=? WHERE id=? AND igreja_id=?";
+            $sql = "UPDATE financeiro_basico SET tipo=?, valor=?, descricao=?, data_movimento=?, membro_id=?";
+            $params = [$tipo, $valor, $descricao, $data_movimento, $membro_id];
+            
+            if ($comprovante_url) {
+                $sql .= ", comprovante_url=?";
+                $params[] = $comprovante_url;
+            }
+            
+            $sql .= " WHERE id=? AND igreja_id=?";
+            $params[] = $id;
+            $params[] = $igreja_id;
+
             $stmt = $pdo->prepare($sql);
-            if ($stmt->execute([$tipo, $valor, $descricao, $data_movimento, $membro_id, $id, $igreja_id])) {
+            if ($stmt->execute($params)) {
                 echo "<script>window.location.href='index.php?page=financeiro&msg=updated';</script>";
                 exit;
             }
         } else {
             // INSERT
-            $sql = "INSERT INTO financeiro_basico (igreja_id, tipo, valor, descricao, data_movimento, membro_id) VALUES (?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO financeiro_basico (igreja_id, tipo, valor, descricao, data_movimento, membro_id, comprovante_url) VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            if ($stmt->execute([$igreja_id, $tipo, $valor, $descricao, $data_movimento, $membro_id])) {
+            if ($stmt->execute([$igreja_id, $tipo, $valor, $descricao, $data_movimento, $membro_id, $comprovante_url])) {
                 echo "<script>window.location.href='index.php?page=financeiro&msg=success';</script>";
                 exit;
             }
@@ -62,6 +96,7 @@ if ($action === 'new' || $action === 'edit') {
     $descricao = $transacao['descricao'] ?? '';
     $sel_membro = $transacao['membro_id'] ?? '';
     $id = $transacao['id'] ?? '';
+    $comprovante = $transacao['comprovante_url'] ?? '';
 
     // Buscar membros para o select
     $stmt = $pdo->prepare("SELECT id, nome FROM membros WHERE igreja_id = ? ORDER BY nome ASC");
@@ -79,7 +114,7 @@ if ($action === 'new' || $action === 'edit') {
             </a>
         </div>
 
-        <form action="index.php?page=financeiro&action=<?php echo $formAction; ?>" method="POST" class="space-y-4">
+        <form action="index.php?page=financeiro&action=<?php echo $formAction; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
             <?php if ($id): ?>
                 <input type="hidden" name="id" value="<?php echo $id; ?>">
             <?php endif; ?>
@@ -89,19 +124,19 @@ if ($action === 'new' || $action === 'edit') {
                 <label class="block text-gray-700 font-bold mb-2">Tipo de Movimento</label>
                 <div class="grid grid-cols-3 gap-2">
                     <label class="cursor-pointer">
-                        <input type="radio" name="tipo" value="dizimo" class="peer sr-only" <?php echo $tipo === 'dizimo' ? 'checked' : ''; ?> onchange="toggleMembro(true)">
+                        <input type="radio" name="tipo" value="dizimo" class="peer sr-only" <?php echo $tipo === 'dizimo' ? 'checked' : ''; ?> onchange="toggleFields('dizimo')">
                         <div class="p-3 text-center border rounded-lg peer-checked:bg-blue-600 peer-checked:text-white hover:bg-gray-50 transition">
                             <i class="fas fa-envelope-open-text mb-1"></i><br>Dízimo
                         </div>
                     </label>
                     <label class="cursor-pointer">
-                        <input type="radio" name="tipo" value="oferta" class="peer sr-only" <?php echo $tipo === 'oferta' ? 'checked' : ''; ?> onchange="toggleMembro(true)">
+                        <input type="radio" name="tipo" value="oferta" class="peer sr-only" <?php echo $tipo === 'oferta' ? 'checked' : ''; ?> onchange="toggleFields('oferta')">
                         <div class="p-3 text-center border rounded-lg peer-checked:bg-green-600 peer-checked:text-white hover:bg-gray-50 transition">
                             <i class="fas fa-hand-holding-usd mb-1"></i><br>Oferta
                         </div>
                     </label>
                      <label class="cursor-pointer">
-                        <input type="radio" name="tipo" value="saida" class="peer sr-only" <?php echo $tipo === 'saida' ? 'checked' : ''; ?> onchange="toggleMembro(false)">
+                        <input type="radio" name="tipo" value="saida" class="peer sr-only" <?php echo $tipo === 'saida' ? 'checked' : ''; ?> onchange="toggleFields('saida')">
                         <div class="p-3 text-center border rounded-lg peer-checked:bg-red-600 peer-checked:text-white hover:bg-gray-50 transition">
                             <i class="fas fa-file-invoice-dollar mb-1"></i><br>Despesa
                         </div>
@@ -133,6 +168,29 @@ if ($action === 'new' || $action === 'edit') {
                     <?php endforeach; ?>
                 </select>
             </div>
+            
+             <!-- Upload de Comprovante (Condicional) -->
+            <div id="upload-field" class="<?php echo $tipo === 'saida' ? '' : 'hidden'; ?>">
+                <label class="block text-gray-700 font-bold mb-2 flex justify-between">
+                    <span>Comprovante / Recibo</span>
+                    <?php if(!PlanEnforcer::canUseFeature($pdo, 'upload_comprovantes')): ?>
+                        <span class="text-xs bg-black text-white px-2 py-0.5 rounded uppercase font-bold tracking-wider">PRO</span>
+                    <?php endif; ?>
+                </label>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition relative">
+                     <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                     <p class="text-sm text-gray-500 mb-2">Clique ou arraste o arquivo aqui</p>
+                     <input type="file" name="comprovante" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*,.pdf">
+                     <p class="text-xs text-gray-400">PDF, JPG ou PNG (Máx 2MB)</p>
+                </div>
+                <?php if ($comprovante): ?>
+                    <div class="mt-2 text-sm text-blue-600">
+                        <a href="<?php echo $comprovante; ?>" target="_blank" class="flex items-center gap-1 hover:underline">
+                            <i class="fas fa-paperclip"></i> Ver comprovante atual
+                        </a>
+                    </div>
+                <?php endif; ?>
+            </div>
 
             <!-- Descrição -->
             <div>
@@ -147,15 +205,22 @@ if ($action === 'new' || $action === 'edit') {
     </div>
 
     <script>
-        function toggleMembro(show) {
-            const field = document.getElementById('membro-field');
-            if (show) {
-                field.classList.remove('hidden');
+        function toggleFields(type) {
+            const membroField = document.getElementById('membro-field');
+            const uploadField = document.getElementById('upload-field');
+            
+            if (type === 'saida') {
+                membroField.classList.add('hidden');
+                membroField.querySelector('select').value = '';
+                uploadField.classList.remove('hidden');
             } else {
-                field.classList.add('hidden');
-                field.querySelector('select').value = '';
+                membroField.classList.remove('hidden');
+                uploadField.classList.add('hidden');
             }
         }
+        
+        // Init state
+        toggleFields('<?php echo $tipo; ?>');
     </script>
 <?php
 } 
@@ -178,9 +243,16 @@ else {
         
         <div class="flex justify-between items-center">
             <h2 class="text-2xl font-bold text-gray-800">Financeiro</h2>
-            <a href="index.php?page=financeiro&action=new" class="bg-gray-800 text-white p-3 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:scale-105 transition transform">
-                <i class="fas fa-plus"></i>
-            </a>
+            <div class="flex gap-2">
+                 <!-- Botão de Config (PIX) Futuro -->
+                 <a href="index.php?page=configuracoes&tab=pix" class="bg-white text-gray-600 p-3 rounded-full w-12 h-12 flex items-center justify-center shadow hover:bg-gray-50 transition border border-gray-200" title="Configurar PIX">
+                    <i class="fas fa-qrcode"></i>
+                </a>
+                
+                <a href="index.php?page=financeiro&action=new" class="bg-gray-800 text-white p-3 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:scale-105 transition transform">
+                    <i class="fas fa-plus"></i>
+                </a>
+            </div>
         </div>
 
         <?php if ($msg == 'success'): ?>
@@ -214,6 +286,11 @@ else {
                                     <?php echo date('d/m', strtotime($l['data_movimento'])); ?> • 
                                     <?php echo $l['membro_nome'] ? $l['membro_nome'] : ($l['descricao'] ?: 'Sem descrição'); ?>
                                 </p>
+                                <?php if($l['comprovante_url']): ?>
+                                    <a href="<?php echo $l['comprovante_url']; ?>" target="_blank" class="text-xs text-blue-500 flex items-center gap-1 mt-1 hover:underline">
+                                        <i class="fas fa-paperclip"></i> Ver Comprovante
+                                    </a>
+                                <?php endif; ?>
                             </div>
                         </div>
 

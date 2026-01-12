@@ -116,8 +116,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_tenant'])) {
              $pdo->prepare("INSERT INTO papel_usuario (usuario_id, papel_id) VALUES (?, ?)")->execute([$userId, $roleId]);
         }
         
-        // 4. Assinatura
-        $stmt = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, data_inicio, data_fim) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 YEAR))");
+        // 4. Assinatura (MENSAL - 30 DIAS)
+        $stmt = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, data_inicio, data_fim) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY))");
         $stmt->execute([$igrejaId, $planoId]);
         
         $pdo->commit();
@@ -165,6 +165,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_admin_email'])
         $msg = "E-mail do administrador atualizado com sucesso.";
     } catch (PDOException $e) {
         $error = "Erro ao atualizar: " . $e->getMessage();
+    }
+}
+
+
+// Update Tenant Plan
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_tenant_plan'])) {
+    $t_id = $_POST['tenant_id'];
+    $new_plano_id = $_POST['new_plano_id'];
+    
+    try {
+        // Verifica se já tem assinatura
+        $stmtCheck = $pdo->prepare("SELECT id FROM assinaturas WHERE igreja_id = ?");
+        $stmtCheck->execute([$t_id]);
+        $subId = $stmtCheck->fetchColumn();
+
+        if ($subId) {
+            // Atualiza existente (Renova por 30 dias a partir de hoje)
+            $sql = "UPDATE assinaturas SET plano_id = ?, status = 'ativa', data_inicio = CURDATE(), data_fim = DATE_ADD(CURDATE(), INTERVAL 30 DAY) WHERE id = ?";
+            $pdo->prepare($sql)->execute([$new_plano_id, $subId]);
+        } else {
+            // Cria nova se não existir (caso de erro anterior)
+            $sql = "INSERT INTO assinaturas (igreja_id, plano_id, status, data_inicio, data_fim) VALUES (?, ?, 'ativa', CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY))";
+            $pdo->prepare($sql)->execute([$t_id, $new_plano_id]);
+        }
+        
+        $msg = "Plano da igreja atualizado com sucesso (Validade: 30 dias).";
+    } catch (PDOException $e) {
+        $error = "Erro ao atualizar plano: " . $e->getMessage();
     }
 }
 
@@ -441,6 +469,9 @@ $planos = $pdo->query("SELECT * FROM planos")->fetchAll();
                                     <span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-bold">
                                         <?php echo $t['plano_nome'] ?? 'Sem Plano'; ?>
                                     </span>
+                                    <button onclick="openPlanModal('<?php echo $t['id']; ?>', '<?php echo $t['plano_id'] ?? ''; ?>')" class="text-gray-400 hover:text-blue-600 ml-1" title="Alterar Plano">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
                                 </td>
                                 <td class="p-4"><?php echo $t['num_users']; ?></td>
                                 <td class="p-4 text-sm text-gray-500"><?php echo date('d/m/Y', strtotime($t['created_at'])); ?></td>
@@ -477,11 +508,47 @@ $planos = $pdo->query("SELECT * FROM planos")->fetchAll();
         </div>
     </div>
 
+
+    <!-- Update Plan Modal -->
+    <div id="planModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-6 rounded shadow-lg w-96 animate-fade-in-down">
+            <h3 class="text-lg font-bold mb-4">Alterar Plano da Igreja</h3>
+            <form method="POST">
+                <input type="hidden" name="update_tenant_plan" value="1">
+                <input type="hidden" name="tenant_id" id="plan_tenant_id">
+                
+                <label class="block mb-2 text-sm text-gray-600 font-bold">Selecione o Novo Plano</label>
+                <select name="new_plano_id" id="plan_select" class="w-full border p-2 rounded mb-4 focus:ring-2 focus:ring-black focus:outline-none">
+                    <?php foreach($planos as $p): ?>
+                        <option value="<?php echo $p['id']; ?>"><?php echo $p['nome']; ?> (R$ <?php echo $p['preco']; ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+                
+                <p class="text-xs text-gray-500 mb-4 bg-yellow-50 p-2 rounded border border-yellow-200">
+                    <i class="fas fa-info-circle"></i> Ao salvar, a assinatura será renovada por <strong>30 dias</strong> a partir de hoje.
+                </p>
+
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('planModal').classList.add('hidden')" class="px-4 py-2 bg-gray-200 font-bold rounded hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-black text-white font-bold rounded hover:bg-gray-800">Salvar Alteração</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         function openEditModal(id, email) {
             document.getElementById('modal_user_id').value = id;
             document.getElementById('modal_email').value = email;
             document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function openPlanModal(tenantId, currentPlanId) {
+            document.getElementById('plan_tenant_id').value = tenantId;
+            if(currentPlanId) {
+                document.getElementById('plan_select').value = currentPlanId;
+            }
+            document.getElementById('planModal').classList.remove('hidden');
         }
     </script>
 </body>

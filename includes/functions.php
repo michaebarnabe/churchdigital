@@ -26,6 +26,7 @@ function register_menu_item($label, $url, $icon = 'fa-circle', $role = null) {
  * Carrega automaticamente os plugins da pasta /plugins
  */
 function load_plugins() {
+    global $pdo;
     $plugins_dir = __DIR__ . '/../plugins';
     
     if (!is_dir($plugins_dir)) {

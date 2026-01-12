@@ -5,10 +5,22 @@
  */
 class PlanEnforcer {
     
-    public static function canAdd($pdo, $resource) {
-        $igrejaId = TenantScope::getId();
+    /**
+     * Resolve quem é o dono do plano (Se filial, retorna a Matriz)
+     */
+    private static function getPlanOwner($pdo, $tenantId) {
+        $stmt = $pdo->prepare("SELECT id, parent_id FROM igrejas WHERE id = ?");
+        $stmt->execute([$tenantId]);
+        $tenant = $stmt->fetch();
         
-        // 1. Buscar assinatura ativa e limites do plano
+        return ($tenant && !empty($tenant['parent_id'])) ? $tenant['parent_id'] : $tenantId;
+    }
+
+    public static function canAdd($pdo, $resource) {
+        $currentTenantId = TenantScope::getId();
+        $planOwnerId = self::getPlanOwner($pdo, $currentTenantId);
+        
+        // 1. Buscar assinatura ativa e limites do plano (Do Dono do Plano)
         $sql = "
             SELECT p.* 
             FROM assinaturas a
@@ -17,36 +29,52 @@ class PlanEnforcer {
             LIMIT 1
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$igrejaId]);
+        $stmt->execute([$planOwnerId]);
         $plano = $stmt->fetch();
         
         if (!$plano) {
-            // Se não tem assinatura ativa, assume plano Free (fallback)
-            // Ou bloqueia tudo. Vamos assumir Free hardcoded para evitar bloqueio total sem querer.
-            $plano = ['limite_membros' => 50, 'limite_usuarios' => 1];
+            // Fallback Free
+            $plano = ['limite_membros' => 50, 'limite_usuarios' => 1, 'limite_filiais' => 0];
         }
         
-        // 2. Verificar limites
+        // 2. Verificar limites (Soma Global: Matriz + Filiais)
         if ($resource === 'membros') {
-            $count = $pdo->prepare("SELECT COUNT(*) FROM membros WHERE igreja_id = ?");
-            $count->execute([$igrejaId]);
+            // Conta membros da Matriz + Membros de todas as filiais
+            $varOwner = $planOwnerId; 
+            
+            // Subquery: Get all IDs (Owner itself + Children)
+            $sqlCount = "
+                SELECT COUNT(*) 
+                FROM membros m 
+                JOIN igrejas i ON m.igreja_id = i.id 
+                WHERE i.id = ? OR i.parent_id = ?
+            ";
+            $count = $pdo->prepare($sqlCount);
+            $count->execute([$planOwnerId, $planOwnerId]);
             $current = $count->fetchColumn();
             
             return $current < $plano['limite_membros'];
         }
         
         if ($resource === 'usuarios') {
-            $count = $pdo->prepare("SELECT COUNT(*) FROM usuarios WHERE igreja_id = ?");
-            $count->execute([$igrejaId]);
+            // Conta usuários da Matriz + Todas as filiais
+            $sqlCount = "
+                SELECT COUNT(*) 
+                FROM usuarios u 
+                JOIN igrejas i ON u.igreja_id = i.id 
+                WHERE i.id = ? OR i.parent_id = ?
+            ";
+            $count = $pdo->prepare($sqlCount);
+            $count->execute([$planOwnerId, $planOwnerId]);
             $current = $count->fetchColumn();
             
             return $current < $plano['limite_usuarios'];
         }
 
         if ($resource === 'filiais') {
-            // Conta quantas igrejas têm este ID como parent_id
+            // Conta quantas filiais o dono do plano tem
             $count = $pdo->prepare("SELECT COUNT(*) FROM igrejas WHERE parent_id = ?");
-            $count->execute([$igrejaId]);
+            $count->execute([$planOwnerId]);
             $current = $count->fetchColumn();
             
             return $current < $plano['limite_filiais'];
@@ -54,39 +82,55 @@ class PlanEnforcer {
         
         return true;
     }
+
+    /**
+     * Verifica se o recurso PRO está disponível no plano
+     */
+    public static function canUseFeature($pdo, $feature) {
+        $currentTenantId = TenantScope::getId();
+        $planOwnerId = self::getPlanOwner($pdo, $currentTenantId);
+        
+        // Buscar plano do DONO
+        $sql = "SELECT p.nome FROM assinaturas a JOIN planos p ON a.plano_id = p.id WHERE a.igreja_id = ? AND a.status = 'ativa' LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$planOwnerId]);
+        $planoNome = strtolower($stmt->fetchColumn() ?: '');
+
+        // Features PRO
+        $proFeatures = ['upload_comprovantes', 'pix_module', 'reports_advanced'];
+
+        if (in_array($feature, $proFeatures)) {
+            if (strpos($planoNome, 'pro') !== false || strpos($planoNome, 'enterprise') !== false) {
+                return true;
+            }
+            return false;
+        }
+
+        return true; // Features básicas liberadas
+    }
+
     /**
      * Exibe um Modal de Upgrade Bloqueante/Invasivo
      */
     public static function renderUpgradeModal($message = "Você atingiu o limite do seu plano.") {
-        // Usa Tailwind e JS para criar modal
         ?>
         <div id="upgradeModal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-90 backdrop-blur-sm p-4 fade-in">
             <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 text-center relative overflow-hidden transform scale-100 transition-all">
-                <!-- Decorative Background Element -->
                 <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 to-blue-500"></div>
-                
-                <div class="mb-6 inline-flex p-4 rounded-full bg-red-100 text-red-500 text-4xl shadow-inner">
-                    <i class="fas fa-lock"></i>
-                </div>
-                
+                <div class="mb-6 inline-flex p-4 rounded-full bg-red-100 text-red-500 text-4xl shadow-inner"><i class="fas fa-lock"></i></div>
                 <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Limite Atingido!</h2>
                 <p class="text-gray-600 text-lg mb-8"><?php echo $message; ?></p>
-                
                 <div class="space-y-4">
                     <a href="https://wa.me/5511999999999?text=Quero%20fazer%20upgrade%20do%20plano" target="_blank" class="block w-full bg-black text-white font-bold py-4 rounded-xl text-xl shadow-lg hover:scale-105 transition transform flex items-center justify-center gap-3">
                         <i class="fas fa-rocket"></i> Fazer Upgrade Agora
                     </a>
-                    
-                    <button onclick="history.back()" class="block w-full bg-gray-100 text-gray-500 font-bold py-3 rounded-xl hover:bg-gray-200 transition">
-                        Voltar
-                    </button>
+                    <button onclick="history.back()" class="block w-full bg-gray-100 text-gray-500 font-bold py-3 rounded-xl hover:bg-gray-200 transition">Voltar</button>
                 </div>
-
                 <p class="mt-6 text-xs text-gray-400">Liberte todo o potencial da sua igreja com nossos planos Premium.</p>
             </div>
         </div>
         <?php
-        exit; // Stop execution to prevent form rendering
+        exit;
     }
 }
 ?>

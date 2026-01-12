@@ -4,7 +4,7 @@ define('ABSPATH', true);
 require_once 'includes/functions.php';
 // Get current URL for QR Code
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-$current_url = $protocol . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+$current_url = $protocol . $_SERVER['HTTP_HOST'] . str_replace('install.php', 'index.php?mode=pwa', $_SERVER['REQUEST_URI']);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

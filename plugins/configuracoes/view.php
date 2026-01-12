@@ -25,6 +25,35 @@ $estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA
 
 // --- ACTIONS ---
 
+// DELETE PIX KEY
+if ($action === 'delete_pix' && isset($_GET['id'])) {
+    if (!PlanEnforcer::canUseFeature($pdo, 'pix_module')) {
+        PlanEnforcer::renderUpgradeModal("Gestão de PIX é recurso PRO.");
+    }
+    $stmt = $pdo->prepare("DELETE FROM pix_keys WHERE id = ? AND igreja_id = ?");
+    $stmt->execute([$_GET['id'], $igreja_id]);
+    echo "<script>window.location.href='index.php?page=configuracoes&tab=pix&msg=deleted';</script>";
+    exit;
+}
+
+// SAVE PIX KEY
+if ($action === 'save_pix' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!PlanEnforcer::canUseFeature($pdo, 'pix_module')) {
+        PlanEnforcer::renderUpgradeModal("Gestão de PIX é recurso PRO.");
+    }
+
+    $tipo = $_POST['tipo'];
+    $chave = $_POST['chave'];
+    $titular = $_POST['titular'];
+    $filial_id = !empty($_POST['filial_id']) ? $_POST['filial_id'] : null;
+
+    $stmt = $pdo->prepare("INSERT INTO pix_keys (igreja_id, filial_id, tipo, chave, titular) VALUES (?, ?, ?, ?, ?)");
+    if ($stmt->execute([$igreja_id, $filial_id, $tipo, $chave, $titular])) {
+        echo "<script>window.location.href='index.php?page=configuracoes&tab=pix&msg=saved';</script>";
+        exit;
+    }
+}
+
 // SAVE SETTINGS
 if ($action === 'save_settings' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     // Campos Básicos
@@ -109,22 +138,44 @@ if ($is_matrix) {
 }
 
 $activeTab = $_GET['tab'] ?? 'dados';
+
+// Buscar chaves PIX
+$pixKeys = [];
+if ($activeTab === 'pix') {
+    $stmt = $pdo->prepare("
+        SELECT p.*, i.nome as filial_nome 
+        FROM pix_keys p
+        LEFT JOIN igrejas i ON p.filial_id = i.id
+        WHERE p.igreja_id = ?
+        ORDER BY p.id DESC
+    ");
+    $stmt->execute([$igreja_id]);
+    $pixKeys = $stmt->fetchAll();
+}
 ?>
 
-<div class="fade-in">
+<div class="fade-in pb-20">
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
         <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-cog text-primary mr-2"></i> Configurações</h2>
     </div>
 
     <?php if(isset($_GET['msg']) && $_GET['msg']=='saved'): ?>
-        <div class="bg-green-100 text-green-700 p-4 rounded mb-4 shadow">Configurações salvas com sucesso!</div>
+        <div class="bg-green-100 text-green-700 p-4 rounded mb-4 shadow">Salvo com sucesso!</div>
+    <?php elseif(isset($_GET['msg']) && $_GET['msg']=='deleted'): ?>
+        <div class="bg-red-100 text-red-700 p-4 rounded mb-4 shadow">Removido com sucesso.</div>
     <?php endif; ?>
 
     <!-- TABS -->
-    <div class="flex gap-4 mb-6 border-b border-gray-200">
+    <div class="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto">
         <a href="index.php?page=configuracoes&tab=dados" class="pb-2 border-b-2 <?php echo $activeTab=='dados'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?>">
             Dados da Igreja
+        </a>
+        <a href="index.php?page=configuracoes&tab=pix" class="pb-2 border-b-2 <?php echo $activeTab=='pix'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?> flex items-center gap-1">
+            Chaves PIX
+            <?php if(!PlanEnforcer::canUseFeature($pdo, 'pix_module')): ?>
+                <span class="text-[0.6rem] bg-black text-white px-1 rounded uppercase font-bold">PRO</span>
+            <?php endif; ?>
         </a>
         <?php if ($is_matrix): ?>
         <a href="index.php?page=configuracoes&tab=filiais" class="pb-2 border-b-2 <?php echo $activeTab=='filiais'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?>">
@@ -135,6 +186,104 @@ $activeTab = $_GET['tab'] ?? 'dados';
             Cores e Tema
         </a>
     </div>
+
+    <!-- TAB: PIX -->
+    <?php if ($activeTab === 'pix'): ?>
+        <?php if (!PlanEnforcer::canUseFeature($pdo, 'pix_module')): ?>
+            <div class="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+                <div class="inline-flex p-4 rounded-full bg-black text-white text-3xl mb-4"><i class="fas fa-lock"></i></div>
+                <h3 class="text-xl font-bold text-gray-800">Recurso Premium</h3>
+                <p class="text-gray-600 mb-6">A gestão de chaves PIX e Doações é exclusiva para assinantes PRO.</p>
+                <div class="w-full h-4 bg-gray-200 rounded-full mb-2 overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 w-full animate-pulse"></div>
+                </div>
+            </div>
+            <!-- Mock visual -->
+            <div class="opacity-20 pointer-events-none filter blur-sm mt-4 select-none">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded shadow">Mock Form PIX...</div>
+                    <div class="bg-white p-6 rounded shadow">Mock List PIX...</div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- FORM -->
+                <div class="bg-white rounded-xl shadow p-6 h-fit">
+                    <h3 class="font-bold text-lg mb-4 text-gray-700">Nova Chave PIX</h3>
+                    <form method="POST" action="index.php?page=configuracoes&action=save_pix">
+                        <div class="mb-3">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Tipo de Chave</label>
+                            <select name="tipo" class="w-full p-2 border rounded" required>
+                                <option value="cnpj">CNPJ</option>
+                                <option value="cpf">CPF</option>
+                                <option value="email">E-mail</option>
+                                <option value="telefone">Telefone</option>
+                                <option value="aleatoria">Chave Aleatória</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Chave</label>
+                            <input type="text" name="chave" class="w-full p-2 border rounded" required placeholder="Digite a chave...">
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Nome do Titular</label>
+                            <input type="text" name="titular" class="w-full p-2 border rounded" required placeholder="Quem vai receber?">
+                        </div>
+                        
+                        <?php if($is_matrix && count($filiais) > 0): ?>
+                        <div class="mb-4">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Vincular a Filial (Opcional)</label>
+                            <select name="filial_id" class="w-full p-2 border rounded">
+                                <option value="">-- Toda a Igreja / Matriz --</option>
+                                <?php foreach($filiais as $f): ?>
+                                    <option value="<?php echo $f['id']; ?>"><?php echo e($f['nome']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                             <p class="text-xs text-gray-500 mt-1">Se selecionado, apenas membros desta filial verão esta chave.</p>
+                        </div>
+                        <?php endif; ?>
+
+                        <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 rounded hover:brightness-90 transition">
+                            <i class="fas fa-plus"></i> Adicionar Chave
+                        </button>
+                    </form>
+                </div>
+
+                <!-- LIST -->
+                <div class="md:col-span-2 space-y-4">
+                    <h3 class="font-bold text-lg text-gray-700">Chaves Cadastradas</h3>
+                    <?php if(count($pixKeys) > 0): ?>
+                        <?php foreach($pixKeys as $k): ?>
+                            <div class="bg-white rounded-xl shadow p-4 flex justify-between items-center group">
+                                <div class="flex items-center gap-4">
+                                    <div class="bg-green-50 text-green-600 w-12 h-12 rounded-full flex items-center justify-center text-xl">
+                                        <i class="fas fa-qrcode"></i>
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-gray-800"><?php echo e($k['titular']); ?></p>
+                                        <p class="text-sm text-gray-600 font-mono"><?php echo e($k['chave']); ?> (<?php echo strtoupper($k['tipo']); ?>)</p>
+                                        <?php if($k['filial_nome']): ?>
+                                            <span class="text-xs bg-blue-100 text-blue-700 px-2 rounded-full">Filial: <?php echo e($k['filial_nome']); ?></span>
+                                        <?php elseif($is_matrix): ?>
+                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 rounded-full">Global / Matriz</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <a href="index.php?page=configuracoes&action=delete_pix&id=<?php echo $k['id']; ?>" class="text-gray-300 hover:text-red-500 transition" onclick="return confirm('Apagar chave?');">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                         <div class="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed">
+                            <i class="fas fa-wallet text-4xl mb-2 opacity-50"></i>
+                            <p>Nenhuma chave PIX cadastrada.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    <?php endif; ?>
 
     <!-- TAB: DADOS -->
     <?php if ($activeTab === 'dados'): ?>
@@ -308,3 +457,4 @@ $activeTab = $_GET['tab'] ?? 'dados';
     <?php endif; ?>
 
 </div>
+

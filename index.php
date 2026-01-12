@@ -253,6 +253,13 @@ include 'templates/header.php';
                     </a>
                 <?php endif; ?>
 
+                <a href="index.php?page=doacoes" class="flex flex-col items-center justify-center p-4 bg-white shadow-sm hover:shadow-md rounded-xl transition group">
+                    <div class="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition">
+                        <i class="fas fa-heart"></i>
+                    </div>
+                    <span class="text-sm font-bold text-gray-700">Doações</span>
+                </a>
+
             </div>
         </div>
 
