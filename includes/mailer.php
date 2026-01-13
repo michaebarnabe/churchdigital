@@ -28,7 +28,7 @@ require_once __DIR__ . '/PHPMailer/SMTP.php';
 function send_mail($to, $subject, $body, $altBody = '') {
     // Verificar se deve usar API do Brevo
     $useBrevoApi = getenv('USE_BREVO_API') === 'true';
-    $brevoApiKey = getenv('BREVO_API_KEY');
+    $brevoApiKey = trim(getenv('BREVO_API_KEY'));
 
     // Modo API (Brevo) via Curl
     if ($useBrevoApi && $brevoApiKey) {
