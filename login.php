@@ -38,6 +38,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="bg-gray-50 flex items-center justify-center h-screen px-4">
 
+    <!-- PWA & Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ChurchApp">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/icons/icon-512.png">
+    <link rel="shortcut icon" href="assets/icons/icon-192.png">
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('SW registered!', reg))
+                    .catch(err => console.log('SW failed', err));
+            });
+        }
+    </script>
+
     <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
         <div class="text-center mb-8">
             <img src="assets/icons/icon-512.png" alt="Church Digital" class="w-20 h-20 mx-auto rounded-xl shadow-md bg-white p-2 mb-4">

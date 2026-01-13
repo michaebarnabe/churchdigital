@@ -85,6 +85,90 @@ if ($action === 'save_settings' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+// DELETE BRANCH
+if ($action === 'delete_branch' && isset($_GET['id'])) {
+    if (!$is_matrix) die("Acesso Negado.");
+    
+    $branchId = $_GET['id'];
+    
+    // Check ownership
+    $check = $pdo->prepare("SELECT id FROM igrejas WHERE id = ? AND parent_id = ?");
+    $check->execute([$branchId, $igreja_id]);
+    if (!$check->fetch()) die("Filial não encontrada.");
+
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Delete Dependencies
+        // Papel Users
+        $pdo->prepare("DELETE pu FROM papel_usuario pu JOIN usuarios u ON pu.usuario_id = u.id WHERE u.igreja_id = ?")->execute([$branchId]);
+        
+        // Users
+        $pdo->prepare("DELETE FROM usuarios WHERE igreja_id = ?")->execute([$branchId]);
+
+        // Members, Financials, etc would need cascade delete here ideally, OR rely on FK ON DELETE CASCADE if configured.
+        // Assuming strict schema manually:
+        $pdo->prepare("DELETE FROM membros WHERE igreja_id = ?")->execute([$branchId]);
+        $pdo->prepare("DELETE FROM financeiro_basico WHERE igreja_id = ?")->execute([$branchId]);
+        $pdo->prepare("DELETE FROM eventos WHERE igreja_id = ?")->execute([$branchId]);
+        
+        // Church
+        $pdo->prepare("DELETE FROM igrejas WHERE id = ?")->execute([$branchId]);
+        
+        $pdo->commit();
+        echo "<script>window.location.href='index.php?page=configuracoes&tab=filiais&msg=branch_deleted';</script>";
+        exit;
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo "Erro ao deletar: " . $e->getMessage();
+    }
+}
+
+// UPDATE BRANCH
+if ($action === 'update_branch' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!$is_matrix) die("Acesso Negado.");
+    
+    $b_id = $_POST['branch_id'];
+    $b_nome = $_POST['nome'];
+    $admin_email = $_POST['admin_email'];
+    $admin_pass = $_POST['admin_senha'] ?? '';
+    
+    // Check ownership
+    $check = $pdo->prepare("SELECT id FROM igrejas WHERE id = ? AND parent_id = ?");
+    $check->execute([$b_id, $igreja_id]);
+    if (!$check->fetch()) die("Filial não encontrada.");
+
+    try {
+        $pdo->beginTransaction();
+        
+        // Update Church Name
+        $pdo->prepare("UPDATE igrejas SET nome = ? WHERE id = ?")->execute([$b_nome, $b_id]);
+        
+        // Update Admin User
+        // Find admin
+        $stmtAdmin = $pdo->prepare("SELECT id FROM usuarios WHERE igreja_id = ? AND nivel = 'admin' LIMIT 1");
+        $stmtAdmin->execute([$b_id]);
+        $adminId = $stmtAdmin->fetchColumn();
+        
+        if ($adminId) {
+            if (!empty($admin_pass)) {
+                $hash = password_hash($admin_pass, PASSWORD_DEFAULT);
+                $pdo->prepare("UPDATE usuarios SET email = ?, senha = ? WHERE id = ?")->execute([$admin_email, $hash, $adminId]);
+            } else {
+                $pdo->prepare("UPDATE usuarios SET email = ? WHERE id = ?")->execute([$admin_email, $adminId]);
+            }
+        }
+        
+        $pdo->commit();
+        echo "<script>window.location.href='index.php?page=configuracoes&tab=filiais&msg=branch_updated';</script>";
+        exit;
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo "Erro: " . $e->getMessage();
+    }
+}
+
 // CREATE BRANCH
 if ($action === 'create_branch' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$is_matrix) die("Apenas matriz pode criar filiais.");
@@ -164,6 +248,10 @@ if ($activeTab === 'pix') {
         <div class="bg-green-100 text-green-700 p-4 rounded mb-4 shadow">Salvo com sucesso!</div>
     <?php elseif(isset($_GET['msg']) && $_GET['msg']=='deleted'): ?>
         <div class="bg-red-100 text-red-700 p-4 rounded mb-4 shadow">Removido com sucesso.</div>
+     <?php elseif(isset($_GET['msg']) && $_GET['msg']=='branch_deleted'): ?>
+        <div class="bg-red-100 text-red-700 p-4 rounded mb-4 shadow">Filial removida com sucesso.</div>
+     <?php elseif(isset($_GET['msg']) && $_GET['msg']=='branch_updated'): ?>
+        <div class="bg-green-100 text-green-700 p-4 rounded mb-4 shadow">Filial atualizada com sucesso.</div>
     <?php endif; ?>
 
     <!-- TABS -->
@@ -352,13 +440,23 @@ if ($activeTab === 'pix') {
             <h3 class="font-bold text-lg mb-4 text-gray-700">Filiais Cadastradas</h3>
             <?php if (count($filiais) > 0): ?>
                 <div class="space-y-3">
-                    <?php foreach($filiais as $f): ?>
-                    <div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                    <?php foreach($filiais as $f): 
+                        // Get Admin Email
+                        $adminF = $pdo->query("SELECT email FROM usuarios WHERE igreja_id={$f['id']} AND nivel='admin' LIMIT 1")->fetchColumn();
+                    ?>
+                    <div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50 group">
                         <div>
                             <p class="font-bold text-gray-800"><?php echo e($f['nome']); ?></p>
-                            <p class="text-xs text-gray-500"><i class="fas fa-map-marker-alt"></i> <?php echo e($f['cidade']); ?> - <?php echo e($f['estado']); ?></p>
+                            <p class="text-xs text-gray-500"><i class="fas fa-user-shield"></i> <?php echo e($adminF); ?></p>
                         </div>
-                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Ativa</span>
+                        <div class="flex gap-2">
+                             <button onclick="openEditBranch('<?php echo $f['id']; ?>', '<?php echo htmlspecialchars(addslashes($f['nome'])); ?>', '<?php echo $adminF; ?>')" class="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded" title="Editar">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                            <a href="index.php?page=configuracoes&action=delete_branch&id=<?php echo $f['id']; ?>" class="text-red-400 hover:text-red-700 p-2 hover:bg-red-50 rounded" onclick="return confirm('Tem certeza que deseja EXCLUIR esta filial? Esta ação removerá TODOS os dados dela e é irreversível.');" title="Excluir">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -455,6 +553,47 @@ if ($activeTab === 'pix') {
         <?php endif; ?>
     </form>
     <?php endif; ?>
+
+<!-- Edit Branch Modal -->
+<?php if($activeTab === 'filiais'): ?>
+<div id="editBranchModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center backdrop-blur-sm z-50">
+    <div class="bg-white p-6 rounded-xl shadow-lg w-96 animate-fade-in-down">
+        <h3 class="text-lg font-bold mb-4">Editar Filial</h3>
+        <form method="POST" action="index.php?page=configuracoes&action=update_branch">
+            <input type="hidden" name="branch_id" id="modal_branch_id">
+            
+            <div class="mb-3">
+                <label class="block text-xs font-bold text-gray-700 mb-1">Nome da Filial</label>
+                <input type="text" name="nome" id="modal_branch_nome" class="w-full border rounded p-2 focus:ring-2 focus:ring-black focus:outline-none" required>
+            </div>
+            
+            <div class="mb-3">
+                <label class="block text-xs font-bold text-gray-700 mb-1">E-mail Admin</label>
+                <input type="email" name="admin_email" id="modal_branch_email" class="w-full border rounded p-2 focus:ring-2 focus:ring-black focus:outline-none" required>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-gray-700 mb-1">Nova Senha Admin (Opcional)</label>
+                <input type="password" name="admin_senha" class="w-full border rounded p-2 focus:ring-2 focus:ring-black focus:outline-none" placeholder="Deixe em branco para manter">
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="document.getElementById('editBranchModal').classList.add('hidden')" class="px-4 py-2 bg-gray-200 font-bold rounded hover:bg-gray-300 transition">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-black text-white font-bold rounded hover:bg-gray-800 transition">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditBranch(id, nome, email) {
+    document.getElementById('modal_branch_id').value = id;
+    document.getElementById('modal_branch_nome').value = nome;
+    document.getElementById('modal_branch_email').value = email;
+    document.getElementById('editBranchModal').classList.remove('hidden');
+}
+</script>
+<?php endif; ?>
 
 </div>
 
