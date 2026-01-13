@@ -2,6 +2,8 @@ const CACHE_NAME = 'church-digital-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.php',
+  '/login.php',
+  '/login_2fa.php',
   '/config.php',
   '/manifest.json',
   '/assets/css/style.css', // Assuming you might have one, optional
