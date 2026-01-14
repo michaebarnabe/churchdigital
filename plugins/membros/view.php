@@ -33,6 +33,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
     $filial = $_POST['filial'] ?? '';
     $filial = $_POST['filial'] ?? '';
     $cargo = $_POST['cargo'] ?? 'Membro'; // Novo campo
+    
+    // Novos Campos
+    $naturalidade = $_POST['naturalidade'] ?? '';
+    // Novo V2
+    $nacionalidade = $_POST['nacionalidade'] ?? 'Brasileira';
+    $nome_pai = $_POST['nome_pai'] ?? '';
+    $nome_mae = $_POST['nome_mae'] ?? '';
+
+    $estado_civil = $_POST['estado_civil'] ?? '';
+    $profissao = $_POST['profissao'] ?? '';
+    $cep = $_POST['cep'] ?? '';
+    $endereco = $_POST['endereco'] ?? '';
+    $bairro = $_POST['bairro'] ?? '';
+    $cidade = $_POST['cidade'] ?? '';
+    $estado = $_POST['estado'] ?? '';
+    $pais = $_POST['pais'] ?? '';
+
     // Login Data
     $email = !empty($_POST['email']) ? $_POST['email'] : null;
     $senha = $_POST['senha'] ?? '';
@@ -88,8 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
         if ($id && $action === 'update') {
             // UPDATE
             // Reverted: Do NOT update igreja_id. Members stay where they were unless admin switches context.
-            $sql = "UPDATE membros SET nome=?, telefone=?, data_nascimento=?, data_batismo=?, data_inicio=?, filial=?, cargo=?, foto=?, email=?";
-            $params = [$nome, $telefone, $nascimento, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email];  // filial param matches $filial (legacy)
+            $sql = "UPDATE membros SET nome=?, telefone=?, data_nascimento=?, data_batismo=?, data_inicio=?, filial=?, cargo=?, foto=?, email=?, naturalidade=?, estado_civil=?, profissao=?, cep=?, endereco=?, bairro=?, cidade=?, estado=?, pais=?, nacionalidade=?, nome_pai=?, nome_mae=?";
+            $params = [$nome, $telefone, $nascimento, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email, $naturalidade, $estado_civil, $profissao, $cep, $endereco, $bairro, $cidade, $estado, $pais, $nacionalidade, $nome_pai, $nome_mae];  // filial param matches $filial (legacy)
 
             
             // Update password only if provided
@@ -110,10 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
         } else {
             // INSERT
             $hashed_pass = !empty($senha) ? password_hash($senha, PASSWORD_DEFAULT) : null;
-            $sql = "INSERT INTO membros (igreja_id, nome, telefone, data_nascimento, sexo, data_batismo, data_inicio, filial, cargo, foto, email, senha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO membros (igreja_id, nome, telefone, data_nascimento, sexo, data_batismo, data_inicio, filial, cargo, foto, email, senha, naturalidade, estado_civil, profissao, cep, endereco, bairro, cidade, estado, pais, nacionalidade, nome_pai, nome_mae) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $stmt = $pdo->prepare($sql);
-            if ($stmt->execute([$igreja_id, $nome, $telefone, $nascimento, $sexo, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email, $hashed_pass])) {
+            if ($stmt->execute([$igreja_id, $nome, $telefone, $nascimento, $sexo, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email, $hashed_pass, $naturalidade, $estado_civil, $profissao, $cep, $endereco, $bairro, $cidade, $estado, $pais, $nacionalidade, $nome_pai, $nome_mae])) {
                 echo "<script>window.location.href='index.php?page=membros&msg=success';</script>";
                 exit;
             }
@@ -149,6 +166,22 @@ if ($action === 'new' || $action === 'edit') {
     $email = $membro['email'] ?? '';
     $foto = $membro['foto'] ?? '';
     $id = $membro['id'] ?? '';
+    
+    // Novos Campos
+    $naturalidade = $membro['naturalidade'] ?? '';
+    // V2
+    $nacionalidade = $membro['nacionalidade'] ?? '';
+    $nome_pai = $membro['nome_pai'] ?? '';
+    $nome_mae = $membro['nome_mae'] ?? '';
+
+    $estado_civil = $membro['estado_civil'] ?? '';
+    $profissao = $membro['profissao'] ?? '';
+    $cep = $membro['cep'] ?? '';
+    $endereco = $membro['endereco'] ?? '';
+    $bairro = $membro['bairro'] ?? '';
+    $cidade = $membro['cidade'] ?? '';
+    $estado = $membro['estado'] ?? '';
+    $pais = $membro['pais'] ?? '';
     // --- AVAILABLE TENANTS FOR SELECTION (Matrix Only) ---
     $availableTenants = TenantScope::getAvailableTenants($pdo, $_SESSION['user_id'] ?? 0);
     $canSelectChurch = count($availableTenants) > 1;
@@ -443,6 +476,102 @@ if ($action === 'new' || $action === 'edit') {
                 <!-- Filial field removed as per request (Legacy field hidden or removed) -->
                 <!-- <input type="hidden" name="filial" value="<?php echo e($filial); ?>"> -->
             </div>
+
+            <!-- Novos Campos: Dados Pessoais Extras -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Naturalidade</label>
+                    <input type="text" name="naturalidade" value="<?php echo e($naturalidade); ?>" placeholder="Cidade/UF" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Nacionalidade</label>
+                    <input type="text" name="nacionalidade" value="<?php echo e($nacionalidade ?: 'Brasileira'); ?>" placeholder="Brasileira" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label class="block text-gray-700 font-bold mb-2">Nome do Pai</label>
+                    <input type="text" name="nome_pai" value="<?php echo e($nome_pai); ?>" placeholder="Opcional" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
+                </div>
+                 <div>
+                    <label class="block text-gray-700 font-bold mb-2">Nome da Mãe</label>
+                    <input type="text" name="nome_mae" value="<?php echo e($nome_mae); ?>" placeholder="Opcional" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Estado Civil</label>
+                    <select name="estado_civil" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                        <option value="">Selecione...</option>
+                        <option value="Solteiro(a)" <?php echo $estado_civil === 'Solteiro(a)' ? 'selected' : ''; ?>>Solteiro(a)</option>
+                        <option value="Casado(a)" <?php echo $estado_civil === 'Casado(a)' ? 'selected' : ''; ?>>Casado(a)</option>
+                        <option value="Divorciado(a)" <?php echo $estado_civil === 'Divorciado(a)' ? 'selected' : ''; ?>>Divorciado(a)</option>
+                        <option value="Viúvo(a)" <?php echo $estado_civil === 'Viúvo(a)' ? 'selected' : ''; ?>>Viúvo(a)</option>
+                        <option value="Separado(a)" <?php echo $estado_civil === 'Separado(a)' ? 'selected' : ''; ?>>Separado(a)</option>
+                        <option value="União Estável" <?php echo $estado_civil === 'União Estável' ? 'selected' : ''; ?>>União Estável</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Profissão</label>
+                    <input type="text" name="profissao" value="<?php echo e($profissao); ?>" placeholder="Profissão" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Novos Campos: Endereço -->
+             <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <h3 class="text-xs font-bold text-gray-800 uppercase mb-3 flex items-center gap-2">
+                    <i class="fas fa-map-marker-alt"></i> Endereço
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div class="md:col-span-1">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">CEP</label>
+                        <input type="text" name="cep" id="cep" value="<?php echo e($cep); ?>" placeholder="00000-000" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white" onblur="buscarCep(this.value)">
+                    </div>
+                    <div class="md:col-span-3">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">Endereço Completo</label>
+                        <input type="text" name="endereco" id="endereco" value="<?php echo e($endereco); ?>" placeholder="Rua, Número, Complemento" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                    </div>
+                </div>
+                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="md:col-span-1">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">Bairro</label>
+                         <input type="text" name="bairro" id="bairro" value="<?php echo e($bairro); ?>" placeholder="Bairro" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                    </div>
+                    <div class="md:col-span-1">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">Cidade</label>
+                        <input type="text" name="cidade" id="cidade" value="<?php echo e($cidade); ?>" placeholder="Cidade" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                    </div>
+                    <div class="md:col-span-1">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">Estado (UF)</label>
+                        <input type="text" name="estado" id="estado" value="<?php echo e($estado); ?>" placeholder="UF" maxlength="2" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white uppercase">
+                    </div>
+                     <div class="md:col-span-1">
+                        <label class="block text-gray-700 font-bold mb-2 text-sm">País</label>
+                        <input type="text" name="pais" value="<?php echo e($pais ?: 'Brasil'); ?>" placeholder="País" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Script CEP -->
+            <script>
+                function buscarCep(cep) {
+                    cep = cep.replace(/\D/g, '');
+                    if (cep.length === 8) {
+                        fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (!data.erro) {
+                                    document.getElementById('endereco').value = data.logradouro;
+                                    document.getElementById('bairro').value = data.bairro;
+                                    document.getElementById('cidade').value = data.localidade;
+                                    document.getElementById('estado').value = data.uf;
+                                }
+                            })
+                            .catch(error => console.error('Erro ao buscar CEP:', error));
+                    }
+                }
+            </script>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
