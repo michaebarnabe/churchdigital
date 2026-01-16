@@ -257,7 +257,7 @@ include 'templates/header.php';
                     <div class="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition">
                         <i class="fas fa-heart"></i>
                     </div>
-                    <span class="text-sm font-bold text-gray-700">Doações</span>
+                    <span class="text-sm font-bold text-gray-700">Ofertas</span>
                 </a>
 
             </div>

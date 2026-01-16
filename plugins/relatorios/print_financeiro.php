@@ -1,11 +1,24 @@
 <?php
 // plugins/relatorios/print_financeiro.php
+
 require_once '../../config.php';
+
+// Define ABSPATH para permitir carregamento dos includes de segurança
+define('ABSPATH', true);
+
 require_once '../../includes/auth.php';
 require_once '../../includes/functions.php';
 
+// Garantir que TenantScope e outras classes necessárias estejam carregadas
+if (!class_exists('TenantScope') && file_exists('../../includes/TenantScope.php')) {
+    require_once '../../includes/TenantScope.php';
+}
+
 // Segurança: Apenas Admin/Tesoureiro
-if (!is_logged_in() || (!has_role('admin') && !has_role('tesoureiro'))) {
+if (!is_logged_in()) {
+    die("Acesso Negado.");
+}
+if (!has_role('admin') && !has_role('tesoureiro')) {
     die("Acesso Negado.");
 }
 

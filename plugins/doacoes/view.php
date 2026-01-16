@@ -22,7 +22,7 @@ $keys = $stmt->fetchAll();
 <div class="fade-in pb-20 max-w-lg mx-auto">
     <div class="text-center mb-6">
         <h2 class="text-2xl font-bold text-gray-800 flex items-center justify-center gap-2">
-            <i class="fas fa-hand-holding-heart text-red-500"></i> Doações & Dízimos
+            <i class="fas fa-hand-holding-heart text-red-500"></i> Ofertas & Dízimos
         </h2>
         <?php if(!PlanEnforcer::canUseFeature($pdo, 'pix_module')): ?>
              <span class="inline-block mt-2 bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs">Modo Demonstração</span>
@@ -32,7 +32,7 @@ $keys = $stmt->fetchAll();
     <?php if(!PlanEnforcer::canUseFeature($pdo, 'pix_module')): ?>
         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 text-sm text-center">
             <p class="font-bold text-yellow-700">Atenção</p>
-            <p class="text-yellow-600">O módulo de Doações via PIX não está ativo neste plano. Abaixo apenas uma demonstração visual.</p>
+            <p class="text-yellow-600">O módulo de Ofertas via PIX não está ativo neste plano. Abaixo apenas uma demonstração visual.</p>
         </div>
     <?php endif; ?>
 

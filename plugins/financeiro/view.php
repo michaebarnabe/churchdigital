@@ -177,12 +177,22 @@ if ($action === 'new' || $action === 'edit') {
                         <span class="text-xs bg-black text-white px-2 py-0.5 rounded uppercase font-bold tracking-wider">PRO</span>
                     <?php endif; ?>
                 </label>
-                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition relative">
-                     <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
-                     <p class="text-sm text-gray-500 mb-2">Clique ou arraste o arquivo aqui</p>
-                     <input type="file" name="comprovante" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*,.pdf">
-                     <p class="text-xs text-gray-400">PDF, JPG ou PNG (Máx 2MB)</p>
-                </div>
+                <?php $canUpload = PlanEnforcer::canUseFeature($pdo, 'upload_comprovantes'); ?>
+                
+                <?php if($canUpload): ?>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition relative">
+                         <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                         <p class="text-sm text-gray-500 mb-2">Clique ou arraste o arquivo aqui</p>
+                         <input type="file" name="comprovante" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*,.pdf">
+                         <p class="text-xs text-gray-400">PDF, JPG ou PNG (Máx 2MB)</p>
+                    </div>
+                <?php else: ?>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50 cursor-not-allowed opacity-60">
+                         <i class="fas fa-lock text-3xl text-gray-400 mb-2"></i>
+                         <p class="text-sm text-gray-500 mb-1">Upload Indisponível (Plano Grátis)</p>
+                         <p class="text-xs text-gray-400">Faça upgrade para anexar comprovantes.</p>
+                    </div>
+                <?php endif; ?>
                 <?php if ($comprovante): ?>
                     <div class="mt-2 text-sm text-blue-600">
                         <a href="<?php echo $comprovante; ?>" target="_blank" class="flex items-center gap-1 hover:underline">
@@ -244,10 +254,12 @@ else {
         <div class="flex justify-between items-center">
             <h2 class="text-2xl font-bold text-gray-800">Financeiro</h2>
             <div class="flex gap-2">
-                 <!-- Botão de Config (PIX) Futuro -->
+                 <!-- Botão de Config (PIX) Futuro - Apenas Admin -->
+                 <?php if(has_role('admin')): ?>
                  <a href="index.php?page=configuracoes&tab=pix" class="bg-white text-gray-600 p-3 rounded-full w-12 h-12 flex items-center justify-center shadow hover:bg-gray-50 transition border border-gray-200" title="Configurar PIX">
                     <i class="fas fa-qrcode"></i>
                 </a>
+                <?php endif; ?>
                 
                 <a href="index.php?page=financeiro&action=new" class="bg-gray-800 text-white p-3 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:scale-105 transition transform">
                     <i class="fas fa-plus"></i>
