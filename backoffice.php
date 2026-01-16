@@ -123,36 +123,44 @@ if (isset($_GET['impersonate'])) {
     }
 }
 
-// Create Tenant
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_tenant'])) {
-    try {
-        $pdo->beginTransaction();
-        $nome = $_POST['nome'];
-        $email = $_POST['email'];
-        $senha = password_hash($_POST['senha'], PASSWORD_DEFAULT);
-        $planoId = $_POST['plano_id'];
-        
-        $stmt = $pdo->prepare("INSERT INTO igrejas (nome) VALUES (?)");
-        $stmt->execute([$nome]);
-        $igrejaId = $pdo->lastInsertId();
-        
-        $stmt = $pdo->prepare("INSERT INTO usuarios (igreja_id, nome, email, senha, nivel) VALUES (?, ?, ?, ?, 'admin')");
-        $stmt->execute([$igrejaId, 'Administrador', $email, $senha]);
-        $userId = $pdo->lastInsertId();
+// --- BACKOFFICE LOGIC ---
 
-        $roleId = $pdo->query("SELECT id FROM papeis WHERE nome='Administrador' AND is_system=1")->fetchColumn();
-        if ($roleId) $pdo->prepare("INSERT INTO papel_usuario (usuario_id, papel_id) VALUES (?, ?)")->execute([$userId, $roleId]);
+// Send Recovery Email
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_recovery'])) {
+    $rec_id = $_POST['recovery_id'];
+    $rec_email = $_POST['recovery_email'];
+    $rec_nome = $_POST['recovery_nome'];
+    $rec_plan = $_POST['recovery_plan_id'];
+
+    try {
+        require_once 'includes/mailer.php';
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+        $recoveryLink = "{$protocol}{$_SERVER['HTTP_HOST']}".dirname($_SERVER['PHP_SELF'])."/checkout_stripe.php?plan_id={$rec_plan}&recovery_email={$rec_email}&recovery_name=".urlencode($rec_nome);
+
+        $body = "
+        <div style='font-family: sans-serif; color: #333;'>
+            <h1>Falta pouco para ativar sua conta!</h1>
+            <p>Olá, {$rec_nome}!</p>
+            <p>Notamos que você iniciou o cadastro da sua igreja na Church Digital mas não concluiu.</p>
+            <p>Não se preocupe, seus dados estão seguros. Clique no botão abaixo para retomar exatamente de onde parou e ativar sua conta agora mesmo.</p>
+            <br>
+            <a href='{$recoveryLink}' style='background-color: #000; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;'>Concluir Cadastro</a>
+            <br><br>
+            <p>Se tiver dúvidas, responda este e-mail.</p>
+        </div>";
         
-        $stmt = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, data_inicio, data_fim) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY))");
-        $stmt->execute([$igrejaId, $planoId]);
+        $result = send_mail($rec_email, 'Retome seu cadastro na Church Digital', $body);
         
-        $pdo->commit();
-        $msg = "Tenant criado!";
+        if ($result === true) {
+            $msg = "E-mail de recuperação enviado para $rec_email!";
+        } else {
+             $error = "Falha no envio: " . $result;
+        }
     } catch (Exception $e) {
-        $pdo->rollBack();
-        $error = $e->getMessage();
+        $error = "Erro ao enviar: " . $e->getMessage();
     }
 }
+
 
 // Delete Tenant (Common Logic)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_tenant'])) {
@@ -300,7 +308,7 @@ $tenants = $pdo->query("
     ORDER BY i.created_at DESC
 ")->fetchAll();
 
-$pending_tenants = $pdo->query("SELECT i.*, MAX(p.nome) as plano_nome, MAX(a.status) as plano_status, MAX(a.data_inicio) as sub_start FROM igrejas i JOIN assinaturas a ON i.id = a.igreja_id LEFT JOIN planos p ON a.plano_id = p.id WHERE a.status IN ('pendente', 'aguardando_pagamento') GROUP BY i.id ORDER BY i.created_at DESC")->fetchAll();
+$pending_tenants = $pdo->query("SELECT i.*, MAX(p.nome) as plano_nome, MAX(a.status) as plano_status, MAX(p.id) as plano_id, MAX(a.data_inicio) as sub_start, MAX(u.nome) as admin_nome, MAX(u.email) as admin_email FROM igrejas i JOIN assinaturas a ON i.id = a.igreja_id LEFT JOIN planos p ON a.plano_id = p.id JOIN usuarios u ON i.id = u.igreja_id WHERE a.status IN ('pendente', 'aguardando_pagamento') GROUP BY i.id ORDER BY i.created_at DESC")->fetchAll();
 $planos = $pdo->query("SELECT * FROM planos")->fetchAll();
 
 $currentTab = $_GET['tab'] ?? 'tenants';
@@ -388,34 +396,8 @@ $currentTab = $_GET['tab'] ?? 'tenants';
 
             <?php elseif ($currentTab == 'tenants'): ?>
                  <h1 class="text-3xl font-bold mb-6">Igrejas Ativas</h1>
-                 <div class="bg-white p-6 rounded shadow mb-8">
-                    <h2 class="text-xl font-bold mb-4">Nova Igreja</h2>
-                    <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                        <div>
-                            <label class="block text-sm font-bold mb-1">Nome</label>
-                            <input type="text" name="nome" class="w-full p-2 border rounded" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold mb-1">Email Admin</label>
-                            <input type="email" name="email" class="w-full p-2 border rounded" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold mb-1">Senha</label>
-                            <input type="password" name="senha" class="w-full p-2 border rounded" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold mb-1">Plano</label>
-                             <select name="plano_id" class="w-full p-2 border rounded bg-white">
-                                <?php foreach($planos as $p): ?>
-                                    <option value="<?php echo $p['id']; ?>"><?php echo $p['nome']; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <button type="submit" name="create_tenant" class="bg-black text-white font-bold h-10 rounded md:col-start-4">
-                            Criar Tenant
-                        </button>
-                    </form>
-                </div>
+                 <h1 class="text-3xl font-bold mb-6">Igrejas Ativas</h1>
+                 <!-- Manual creation form removed -->
 
                 <div class="bg-white rounded shadow overflow-hidden">
                     <table class="w-full text-left">
@@ -465,10 +447,14 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                                     </td>
                                     <td class="p-4 text-sm text-gray-600">
                                         <div class="text-xs">Criado: <?php echo date('d/m/y', strtotime($t['created_at'])); ?></div>
-                                        <?php if($t['vencimento']): ?>
+                                        <?php if(!empty($t['vencimento']) && $t['vencimento'] != '0000-00-00'): ?>
                                             <div class="text-xs font-bold <?php echo (strtotime($t['vencimento']) < time() + 86400*5) ? 'text-red-600' : 'text-green-600'; ?>">
                                                 Vence: <?php echo date('d/m/y', strtotime($t['vencimento'])); ?>
                                             </div>
+                                        <?php else: ?>
+                                            <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded inline-block mt-1">
+                                                Vitalício
+                                            </span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="p-4 flex gap-3">
@@ -497,10 +483,21 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                                     <td class="p-4">#<?php echo $pt['id']; ?></td>
                                     <td class="p-4"><?php echo $pt['nome']; ?></td>
                                     <td class="p-4"><?php echo $pt['plano_status']; ?></td>
-                                    <td class="p-4">
+                                    <td class="p-4 flex gap-2">
+                                        <form method="POST" title="Enviar E-mail de Recuperação">
+                                            <input type="hidden" name="recovery_id" value="<?php echo $pt['id']; ?>">
+                                            <input type="hidden" name="recovery_email" value="<?php echo $pt['admin_email']; ?>">
+                                            <input type="hidden" name="recovery_nome" value="<?php echo $pt['admin_nome']; ?>">
+                                            <input type="hidden" name="recovery_plan_id" value="<?php echo $pt['plano_id']; ?>">
+                                            <button type="submit" name="send_recovery" class="bg-blue-100 text-blue-600 p-2 rounded hover:bg-blue-200" title="Enviar Recuperação">
+                                                <i class="fas fa-envelope"></i>
+                                            </button>
+                                        </form>
                                         <form method="POST" onsubmit="return confirm('Remover?');">
                                             <input type="hidden" name="delete_id" value="<?php echo $pt['id']; ?>">
-                                            <button type="submit" name="delete_pending" class="text-red-500 font-bold">Excluir</button>
+                                            <button type="submit" name="delete_pending" class="text-red-500 font-bold p-2 hover:bg-red-50 rounded" title="Excluir">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
                                         </form>
                                     </td>
                                 </tr>

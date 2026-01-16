@@ -4,6 +4,8 @@ define('ABSPATH', true);
 require_once 'config_stripe.php';
 
 $plan_id = $_GET['plan_id'] ?? null;
+$recovery_email = $_GET['recovery_email'] ?? '';
+$recovery_name = $_GET['recovery_name'] ?? '';
 
 if (!$plan_id) {
     header("Location: pricing.php");
@@ -37,32 +39,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            // 1. Create Tenant (Igreja) - Status 'pending' logic implied by lack of payment
-            // We can add a 'status' column to 'igrejas' too, checking schema... but let's assume active but locked by subscription
-            $stmt = $pdo->prepare("INSERT INTO igrejas (nome, created_at) VALUES (?, NOW())");
-            $stmt->execute([$nome_igreja]);
-            $igrejaId = $pdo->lastInsertId();
+            // CHECK DUPLICATE EMAIL LOGIC (With Recovery)
+            $checkStmt = $pdo->prepare("SELECT u.id, u.igreja_id, a.status, a.id as sub_id FROM usuarios u JOIN assinaturas a ON u.igreja_id = a.igreja_id WHERE u.email = ?");
+            $checkStmt->execute([$admin_email]);
+            $existing = $checkStmt->fetch();
 
-            // 2. Create Admin User
-            $hashedInfo = password_hash($admin_senha, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("INSERT INTO usuarios (igreja_id, nome, email, senha, nivel, sexo, must_change_password) VALUES (?, ?, ?, ?, 'admin', 'M', 0)");
-            $stmt->execute([$igrejaId, $admin_nome, $admin_email, $hashedInfo]);
-            $userId = $pdo->lastInsertId();
+            if ($existing) {
+                if ($existing['status'] === 'ativa') {
+                    throw new Exception("Já existe uma conta ativa com este e-mail. Por favor, faça login.");
+                } else {
+                    // RECOVERY MODE: Update Existing Pending Record
+                    $userId = $existing['id'];
+                    $igrejaId = $existing['igreja_id'];
+                    $subId = $existing['sub_id'];
 
-            // 3. Assign Role if exists
-            $stmtRole = $pdo->prepare("SELECT id FROM papeis WHERE nome = 'Administrador' LIMIT 1");
-            $stmtRole->execute();
-            $roleId = $stmtRole->fetchColumn();
-            if ($roleId) {
-                $pdo->prepare("INSERT INTO papel_usuario (usuario_id, papel_id) VALUES (?, ?)")->execute([$userId, $roleId]);
+                    // Update User Info
+                    $hashedInfo = password_hash($admin_senha, PASSWORD_DEFAULT);
+                    $pdo->prepare("UPDATE usuarios SET nome = ?, senha = ? WHERE id = ?")->execute([$admin_nome, $hashedInfo, $userId]);
+                    $pdo->prepare("UPDATE igrejas SET nome = ? WHERE id = ?")->execute([$nome_igreja, $igrejaId]);
+                    
+                    // Update Subscription Plan (if changed)
+                    $pdo->prepare("UPDATE assinaturas SET plano_id = ? WHERE id = ?")->execute([$plan['id'], $subId]);
+                }
+            } else {
+                // NEW USER FLOW
+                // 1. Create Tenant (Igreja)
+                $stmt = $pdo->prepare("INSERT INTO igrejas (nome, created_at) VALUES (?, NOW())");
+                $stmt->execute([$nome_igreja]);
+                $igrejaId = $pdo->lastInsertId();
+
+                // 2. Create Admin User
+                $hashedInfo = password_hash($admin_senha, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare("INSERT INTO usuarios (igreja_id, nome, email, senha, nivel, sexo, must_change_password) VALUES (?, ?, ?, ?, 'admin', 'M', 0)");
+                $stmt->execute([$igrejaId, $admin_nome, $admin_email, $hashedInfo]);
+                $userId = $pdo->lastInsertId();
+
+                // 3. Assign Role if exists
+                $stmtRole = $pdo->prepare("SELECT id FROM papeis WHERE nome = 'Administrador' LIMIT 1");
+                $stmtRole->execute();
+                $roleId = $stmtRole->fetchColumn();
+                if ($roleId) {
+                    $pdo->prepare("INSERT INTO papel_usuario (usuario_id, papel_id) VALUES (?, ?)")->execute([$userId, $roleId]);
+                }
+
+                // 4. Create Subscription (PENDING or ACTIVE)
+                $isFree = ((float)$plan['preco'] <= 0.00);
+                $initialStatus = $isFree ? 'ativa' : 'pendente';
+                
+                $stmtSub = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, status, data_inicio, data_fim) VALUES (?, ?, ?, CURDATE(), NULL)");
+                $stmtSub->execute([$igrejaId, $plan['id'], $initialStatus]);
+                $subId = $pdo->lastInsertId();
             }
 
-            // 4. Create Subscription (PENDING)
-            $stmtSub = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, status, data_inicio, data_fim) VALUES (?, ?, 'pendente', CURDATE(), NULL)");
-            $stmtSub->execute([$igrejaId, $plan['id']]);
-            $subId = $pdo->lastInsertId();
+            // IF FREE PLAN -> Bypass Stripe, Auto-Login & Redirect
+            if ($isFree) {
+                $pdo->commit();
 
-            // 5. Create Stripe Checkout Session
+                // Auto-Login Setup
+                $_SESSION['user_id'] = $userId;
+                $_SESSION['user_nome'] = $admin_nome; // Ajustado para match com Payment Success
+                $_SESSION['user_email'] = $admin_email;
+                $_SESSION['igreja_id'] = $igrejaId;
+                $_SESSION['user_type'] = 'staff';
+
+                // Roles Setup
+                if ($roleId) {
+                    $stmtR = $pdo->prepare("SELECT nome FROM papeis WHERE id = ?");
+                    $stmtR->execute([$roleId]);
+                    $_SESSION['user_roles'] = [$stmtR->fetchColumn()];
+                } else {
+                    $_SESSION['user_roles'] = ['Administrador'];
+                }
+
+                // Permissões (Simples fetch)
+                $stmtPerms = $pdo->prepare("
+                    SELECT DISTINCT per.slug 
+                    FROM permissoes per
+                    JOIN papel_permissoes pp ON per.id = pp.permissao_id
+                    JOIN papel_usuario pu ON pp.papel_id = pu.papel_id
+                    WHERE pu.usuario_id = ?
+                ");
+                $stmtPerms->execute([$userId]);
+                $_SESSION['user_permissions'] = $stmtPerms->fetchAll(PDO::FETCH_COLUMN);
+
+                // Welcome Email
+                require_once 'includes/mailer.php';
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+                $body = "
+                <div style='font-family: sans-serif; color: #333;'>
+                    <h1>Bem-vindo à Church Digital!</h1>
+                    <p>Olá, {$admin_nome}!</p>
+                    <p>Sua conta foi criada com sucesso no plano gratuito.</p>
+                    <br>
+                    <h3>📱 Instale o Aplicativo</h3>
+                    <ul>
+                        <li><a href='{$protocol}{$_SERVER['HTTP_HOST']}/ChurchDigital/install.php'>Ver Passo a Passo de Instalação</a></li>
+                        <li><a href='{$protocol}{$_SERVER['HTTP_HOST']}/ChurchDigital/index.php?mode=pwa'><strong>Abrir App Direto</strong></a></li>
+                    </ul>
+                </div>";
+                send_mail($admin_email, 'Bem-vindo ao Church Digital', $body);
+
+                // Redirect
+                header("Location: index.php?msg=welcome_free");
+                exit;
+            }
+
+            // 5. Create Stripe Checkout Session (ONLY FOR PAID PLANS)
             $domain_url = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']); // Auto-detect base URL
             
             $checkout_session = \Stripe\Checkout\Session::create([
@@ -178,11 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">Seu Nome</label>
-                            <input type="text" name="admin_nome" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" required value="<?php echo $_POST['admin_nome'] ?? ''; ?>">
+                            <input type="text" name="admin_nome" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" required value="<?php echo $_POST['admin_nome'] ?? $recovery_name; ?>">
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">Seu E-mail</label>
-                            <input type="email" name="admin_email" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" required value="<?php echo $_POST['admin_email'] ?? ''; ?>">
+                            <input type="email" name="admin_email" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" required value="<?php echo $_POST['admin_email'] ?? $recovery_email; ?>">
                         </div>
                     </div>
                     <div class="mb-4">
@@ -192,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="mt-8">
                         <button type="submit" class="w-full bg-black text-white font-bold py-4 rounded-lg hover:bg-gray-800 transition shadow-lg flex items-center justify-center gap-2 group">
-                            <span>Ir para Pagamento</span>
+                            <span><?php echo ((float)$plan['preco'] > 0.00) ? 'Ir para Pagamento' : 'Finalizar Cadastro'; ?></span>
                             <i class="fas fa-external-link-alt group-hover:translate-x-1 transition"></i>
                         </button>
                         <div class="flex justify-center items-center gap-2 mt-4 text-gray-400">

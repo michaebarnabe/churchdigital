@@ -129,8 +129,8 @@ try {
                     <?php endforeach; ?>
                 </ul>
 
-                <a href="checkout_stripe.php?plan_id=<?php echo $plan['id']; ?>" class="block w-full py-3 px-6 text-center rounded-lg font-bold transition duration-200 <?php echo $isPopular ? 'bg-black text-white hover:bg-gray-800 shadow-lg hover:shadow-xl' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'; ?>">
-                    Começar Agora
+                <a href="checkout_stripe.php?plan_id=<?php echo $plan['id']; ?>" class="block w-full py-3 px-6 text-center rounded-lg font-bold transition duration-200 bg-black text-white hover:bg-gray-800 shadow-lg hover:shadow-xl">
+                    <?php echo ($plan['preco'] > 0) ? 'Começar Agora' : 'Criar Conta Grátis'; ?>
                 </a>
             </div>
             <?php endforeach; ?>

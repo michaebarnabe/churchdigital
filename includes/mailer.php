@@ -52,6 +52,11 @@ function send_mail($to, $subject, $body, $altBody = '') {
             'api-key: ' . $brevoApiKey,
             'content-type: application/json'
         ]);
+        
+        // Fix SSL: Load local CA Cert
+        if (file_exists(__DIR__ . '/cacert.pem')) {
+            curl_setopt($ch, CURLOPT_CAINFO, __DIR__ . '/cacert.pem');
+        }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
