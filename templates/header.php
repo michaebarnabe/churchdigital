@@ -80,6 +80,17 @@ $secondaryColor = $tenant['cor_secundaria'] ?? '#1e40af';
             });
         }
     </script>
+    <?php 
+        // SEO Scripts Injection
+        try {
+            // Check if connection exists (header might be included without full context, though unlikely)
+            if (isset($pdo)) {
+                $stmtSeo = $pdo->query("SELECT config_value FROM admin_config WHERE config_key = 'seo_head_scripts'");
+                $seoScripts = $stmtSeo->fetchColumn();
+                if ($seoScripts) echo $seoScripts;
+            }
+        } catch(Exception $e) {}
+    ?>
 </head>
 <body class="text-gray-800 antialiased font-sans flex flex-col min-h-screen">
 

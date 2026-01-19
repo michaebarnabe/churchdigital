@@ -27,6 +27,14 @@ try {
             -webkit-text-fill-color: transparent;
         }
     </style>
+    <?php 
+        // SEO Scripts Injection
+        try {
+            $stmtSeo = $pdo->query("SELECT config_value FROM admin_config WHERE config_key = 'seo_head_scripts'");
+            $seoScripts = $stmtSeo->fetchColumn();
+            if ($seoScripts) echo $seoScripts;
+        } catch(Exception $e) {}
+    ?>
 </head>
 <body class="bg-gray-50 font-sans text-gray-800">
 
@@ -71,7 +79,7 @@ try {
                     Criar Conta Grátis <i class="fas fa-arrow-right text-sm"></i>
                 </a>
                 <a href="#planos" class="px-8 py-4 bg-transparent border border-gray-700 text-white font-bold text-lg rounded-full hover:bg-gray-800 transition-colors">
-                    Ver Planos PRO
+                    Saiba Mais
                 </a>
             </div>
             
@@ -89,6 +97,9 @@ try {
             
             <?php foreach($planos as $plan): ?>
             <?php 
+                // [MODIFICATION] HIDE PRO PLAN TEMPORARILY
+                if (strtolower($plan['nome']) == 'pro') continue;
+
                 $isPopular = (strtolower($plan['nome']) == 'pro' || $plan['preco'] > 0); 
                 // Simple logic for highlight, adjust as needed
                 $features = [
@@ -162,7 +173,7 @@ try {
                         </span>
                     </summary>
                     <p class="text-gray-600 mt-4 text-sm leading-relaxed">
-                        Seu plano inclui um número base de filiais. Se precisar de mais, você paga apenas R$ 50,00 por filial extra, sem precisar mudar de plano.
+                        Seu plano inclui um número base de filiais. Se precisar de mais, você pagará seu plano + valor customizado por filial extra, sem precisar mudar de plano.
                     </p>
                 </details>
             </div>

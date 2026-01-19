@@ -291,6 +291,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['disable_2fa'])) {
     $twoFaEnabled = false;
 }
 
+// Settings: Save SEO Scripts
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_seo_scripts'])) {
+    $scripts = $_POST['seo_scripts'];
+    $pdo->prepare("INSERT INTO admin_config (config_key, config_value) VALUES ('seo_head_scripts', ?) ON DUPLICATE KEY UPDATE config_value = ?")->execute([$scripts, $scripts]);
+    $msg = "Scripts de SEO salvos com sucesso.";
+}
+
 
 // --- VIEW DATA FETCH ---
 $tenants = $pdo->query("
@@ -333,8 +340,9 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                 <span class="font-bold text-sm">Church Digital App</span>
             </div>
             <nav class="flex-grow p-4 space-y-2">
-                <a href="?tab=tenants" class="block p-3 <?php echo $currentTab == 'tenants' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-church mr-2"></i> Igrejas</a>
+                <a href="?tab=tenants" class="block p-3 <?php echo $currentTab == 'tenants' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-church mr-2"></i> Clientes</a>
                 <a href="?tab=pending" class="block p-3 <?php echo $currentTab == 'pending' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-clock mr-2"></i> Pendentes</a>
+                <a href="?tab=reports" class="block p-3 <?php echo $currentTab == 'reports' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-chart-line mr-2"></i> Relatórios</a>
                 <a href="?tab=plans" class="block p-3 <?php echo $currentTab == 'plans' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-money-bill mr-2"></i> Planos</a>
                 <a href="?tab=settings" class="block p-3 <?php echo $currentTab == 'settings' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'; ?> rounded"><i class="fas fa-shield-alt mr-2"></i> Segurança</a>
             </nav>
@@ -394,8 +402,25 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                     </div>
                 </div>
 
+                <!-- SEO Scripts -->
+                <div class="bg-white p-6 rounded shadow mt-8">
+                    <h2 class="text-xl font-bold mb-4">Scripts Globais (SEO/Tracking)</h2>
+                    <p class="text-gray-500 mb-4 text-sm">Estes scripts serão injetados no <code>&lt;head&gt;</code> de todas as páginas públicas (Landing Page, Login, etc).</p>
+                    
+                    <?php 
+                        $stmtSeo = $pdo->query("SELECT config_value FROM admin_config WHERE config_key = 'seo_head_scripts'");
+                        $currentScripts = $stmtSeo->fetchColumn(); 
+                    ?>
+                    <form method="POST">
+                        <textarea name="seo_scripts" class="w-full h-64 border p-4 rounded font-mono text-sm bg-gray-50 focus:ring-black focus:border-black" placeholder="<!-- Google Analytics --> ..."><?php echo htmlspecialchars($currentScripts ?? ''); ?></textarea>
+                        <div class="mt-4 text-right">
+                             <button type="submit" name="save_seo_scripts" class="bg-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800">Salvar Scripts</button>
+                        </div>
+                    </form>
+                </div>
+
             <?php elseif ($currentTab == 'tenants'): ?>
-                 <h1 class="text-3xl font-bold mb-6">Igrejas Ativas</h1>
+                 <h1 class="text-3xl font-bold mb-6">Clientes Ativos</h1>
                  <h1 class="text-3xl font-bold mb-6">Igrejas Ativas</h1>
                  <!-- Manual creation form removed -->
 
@@ -404,7 +429,7 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                         <thead class="bg-gray-50 border-b">
                             <tr>
                                 <th class="p-4">ID</th>
-                                <th class="p-4">Igreja</th>
+                                <th class="p-4">Cliente</th>
                                 <th class="p-4">Admin</th>
                                 <th class="p-4">Plano</th>
                                 <th class="p-4">Datas</th>
@@ -578,6 +603,81 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                         </tbody>
                     </table>
                 </div>
+
+            <?php elseif ($currentTab == 'reports'): ?>
+                <h1 class="text-3xl font-bold mb-6">Relatórios de Assinaturas</h1>
+                
+                <?php
+                // Filter Logic
+                $filter = $_GET['filter'] ?? 'all';
+                $whereClause = "WHERE 1=1";
+                
+                if ($filter == 'expired') {
+                    $whereClause .= " AND a.data_fim < CURDATE()";
+                    $titleFilter = "Vencidos";
+                } elseif ($filter == 'expiring') {
+                    $whereClause .= " AND a.data_fim BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)";
+                    $titleFilter = "Vencendo (7 dias)";
+                } else {
+                    $titleFilter = "Todos";
+                }
+
+                $reportSql = "
+                    SELECT i.id, i.nome, p.nome as plano, a.data_fim, u.email as admin_email, u.nome as admin_nome
+                    FROM igrejas i
+                    JOIN assinaturas a ON i.id = a.igreja_id
+                    LEFT JOIN planos p ON a.plano_id = p.id
+                    JOIN usuarios u ON i.id = u.igreja_id
+                    $whereClause AND u.nivel = 'admin'
+                    ORDER BY a.data_fim ASC
+                ";
+                $reportData = $pdo->query($reportSql)->fetchAll();
+                ?>
+
+                <div class="flex gap-4 mb-6">
+                    <a href="?tab=reports&filter=all" class="px-4 py-2 rounded font-bold <?php echo $filter == 'all' ? 'bg-black text-white' : 'bg-white text-gray-700 shadow'; ?>">Todos</a>
+                    <a href="?tab=reports&filter=expiring" class="px-4 py-2 rounded font-bold <?php echo $filter == 'expiring' ? 'bg-yellow-500 text-white' : 'bg-white text-yellow-600 shadow'; ?>">Vencendo em 7 dias</a>
+                    <a href="?tab=reports&filter=expired" class="px-4 py-2 rounded font-bold <?php echo $filter == 'expired' ? 'bg-red-600 text-white' : 'bg-white text-red-600 shadow'; ?>">Vencidos</a>
+                </div>
+
+                <div class="bg-white rounded shadow overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 border-b">
+                            <tr>
+                                <th class="p-4">Cliente</th>
+                                <th class="p-4">Plano</th>
+                                <th class="p-4">Vencimento</th>
+                                <th class="p-4">Admin</th>
+                                <th class="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($reportData as $r): 
+                                $daysDiff = (strtotime($r['data_fim']) - time()) / (60 * 60 * 24);
+                                if ($daysDiff < 0) {
+                                    $statusBadge = "<span class='bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold'>Vencido</span>";
+                                } elseif ($daysDiff <= 7) {
+                                    $statusBadge = "<span class='bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold'>Vencendo</span>";
+                                } else {
+                                    $statusBadge = "<span class='bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold'>Ok</span>";
+                                }
+                            ?>
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="p-4 font-bold"><?php echo htmlspecialchars($r['nome']); ?></td>
+                                <td class="p-4"><?php echo $r['plano']; ?></td>
+                                <td class="p-4 font-mono text-sm"><?php echo date('d/m/Y', strtotime($r['data_fim'])); ?></td>
+                                <td class="p-4 text-sm">
+                                    <div><?php echo $r['admin_nome']; ?></div>
+                                    <div class="text-gray-500 text-xs"><?php echo $r['admin_email']; ?></div>
+                                </td>
+                                <td class="p-4"><?php echo $statusBadge; ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php if(empty($reportData)) echo "<div class='p-8 text-center text-gray-500'>Nenhum resultado encontrado para o filtro.</div>"; ?>
+                </div>
+
             <?php endif; ?>
 
         </main>
@@ -605,7 +705,7 @@ $currentTab = $_GET['tab'] ?? 'tenants';
     <!-- Change Password Modal -->
     <div id="passModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center backdrop-blur-sm z-50">
         <div class="bg-white p-6 rounded shadow-lg w-96">
-            <h3 class="text-lg font-bold mb-4">Alterar Senha da Igreja</h3>
+            <h3 class="text-lg font-bold mb-4">Alterar Senha do Cliente</h3>
             <form method="POST">
                 <input type="hidden" name="update_tenant_password" value="1">
                 <input type="hidden" name="admin_user_id_pass" id="modal_user_id_pass">
@@ -625,7 +725,7 @@ $currentTab = $_GET['tab'] ?? 'tenants';
     <!-- Update Plan Modal -->
     <div id="planModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center backdrop-blur-sm z-50">
         <div class="bg-white p-6 rounded shadow-lg w-96">
-            <h3 class="text-lg font-bold mb-4">Alterar Plano da Igreja</h3>
+            <h3 class="text-lg font-bold mb-4">Alterar Plano do Cliente</h3>
             <form method="POST">
                 <input type="hidden" name="update_tenant_plan" value="1">
                 <input type="hidden" name="tenant_id" id="plan_tenant_id">

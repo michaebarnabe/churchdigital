@@ -91,6 +91,26 @@ function login($pdo, $email, $senha) {
         $_SESSION['user_name'] = $user['nome'];
         $_SESSION['user_email'] = $user['email'];
         $_SESSION['igreja_id'] = $user['igreja_id'];
+        
+        // --- SUBSCRIPTION CHECK ---
+        $stmtSub = $pdo->prepare("SELECT status, data_fim FROM assinaturas WHERE igreja_id = ? AND status = 'ativa'");
+        $stmtSub->execute([$user['igreja_id']]);
+        $sub = $stmtSub->fetch();
+        
+        // Bypass for Master Admin impersonation (optional, but good practice if implemented) or if user is Super Admin
+        
+        if ($sub) {
+            if ($sub['data_fim'] && strtotime($sub['data_fim']) < time()) {
+                return "Sua assinatura expirou em " . date('d/m/Y', strtotime($sub['data_fim'])) . ". Entre em contato com o suporte.";
+            }
+        } else {
+             // If no active subscription found
+             // Check if it's a new pending account or really expired/cancelled
+             // For safety, block access if not Master Impersonation (which usually bypasses auth.php or sets session directly)
+             // But here we are in standard login.
+             return "Assinatura inativa ou expirada.";
+        }
+        
         $_SESSION['user_sexo'] = $user['sexo'] ?? 'M'; // Store Gender
         $_SESSION['user_type'] = 'staff';
         
