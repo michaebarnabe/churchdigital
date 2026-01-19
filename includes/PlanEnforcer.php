@@ -16,13 +16,16 @@ class PlanEnforcer {
         return ($tenant && !empty($tenant['parent_id'])) ? $tenant['parent_id'] : $tenantId;
     }
 
-    public static function canAdd($pdo, $resource) {
+    /**
+     * Retorna o limite numérico (Base + Extras) para o recurso
+     */
+    public static function getLimit($pdo, $resource) {
         $currentTenantId = TenantScope::getId();
         $planOwnerId = self::getPlanOwner($pdo, $currentTenantId);
-        
-        // 1. Buscar assinatura ativa e limites do plano (Do Dono do Plano)
+
+        // Buscar dados do plano + extras
         $sql = "
-            SELECT p.* 
+            SELECT p.*, a.extra_membros, a.extra_filiais 
             FROM assinaturas a
             JOIN planos p ON a.plano_id = p.id
             WHERE a.igreja_id = ? AND a.status = 'ativa' AND (a.data_fim IS NULL OR a.data_fim >= CURDATE())
@@ -31,18 +34,37 @@ class PlanEnforcer {
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$planOwnerId]);
         $plano = $stmt->fetch();
-        
+
         if (!$plano) {
             // Fallback Free
             $plano = ['limite_membros' => 50, 'limite_usuarios' => 1, 'limite_filiais' => 0];
         }
+
+        if ($resource === 'membros') {
+            return $plano['limite_membros'] + ($plano['extra_membros'] ?? 0);
+        }
+        if ($resource === 'filiais') {
+            return $plano['limite_filiais'] + ($plano['extra_filiais'] ?? 0);
+        }
+        if ($resource === 'usuarios') {
+            return $plano['limite_usuarios'];
+        }
         
-        // 2. Verificar limites (Soma Global: Matriz + Filiais)
+        return 999999;
+    }
+
+    public static function canAdd($pdo, $resource) {
+        $currentTenantId = TenantScope::getId();
+        $planOwnerId = self::getPlanOwner($pdo, $currentTenantId);
+        
+        // Obter Limite
+        $limit = self::getLimit($pdo, $resource);
+        
+        // Obter Uso Atual
+        $current = 0;
+
         if ($resource === 'membros') {
             // Conta membros da Matriz + Membros de todas as filiais
-            $varOwner = $planOwnerId; 
-            
-            // Subquery: Get all IDs (Owner itself + Children)
             $sqlCount = "
                 SELECT COUNT(*) 
                 FROM membros m 
@@ -52,11 +74,8 @@ class PlanEnforcer {
             $count = $pdo->prepare($sqlCount);
             $count->execute([$planOwnerId, $planOwnerId]);
             $current = $count->fetchColumn();
-            
-            return $current < $plano['limite_membros'];
         }
-        
-        if ($resource === 'usuarios') {
+        elseif ($resource === 'usuarios') {
             // Conta usuários da Matriz + Todas as filiais
             $sqlCount = "
                 SELECT COUNT(*) 
@@ -67,20 +86,15 @@ class PlanEnforcer {
             $count = $pdo->prepare($sqlCount);
             $count->execute([$planOwnerId, $planOwnerId]);
             $current = $count->fetchColumn();
-            
-            return $current < $plano['limite_usuarios'];
         }
-
-        if ($resource === 'filiais') {
+        elseif ($resource === 'filiais') {
             // Conta quantas filiais o dono do plano tem
             $count = $pdo->prepare("SELECT COUNT(*) FROM igrejas WHERE parent_id = ?");
             $count->execute([$planOwnerId]);
             $current = $count->fetchColumn();
-            
-            return $current < $plano['limite_filiais'];
         }
         
-        return true;
+        return $current < $limit;
     }
 
     /**

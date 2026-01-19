@@ -9,14 +9,7 @@ $is_branch = !empty($parent_id);
 
 // 1. Identificar se é Matriz (pode ter filiais)
 // Verifica limites do plano
-$planoLimits = $pdo->prepare("
-    SELECT p.limite_filiais 
-    FROM assinaturas a 
-    JOIN planos p ON a.plano_id = p.id 
-    WHERE a.igreja_id = ? AND a.status = 'ativa'
-");
-$planoLimits->execute([$igreja_id]);
-$limiteFiliais = $planoLimits->fetchColumn() ?: 0;
+$limiteFiliais = PlanEnforcer::getLimit($pdo, 'filiais');
 
 $is_matrix = (!$is_branch && $limiteFiliais > 0);
 
@@ -70,10 +63,11 @@ if ($action === 'save_settings' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $logo_url = $_POST['logo_url'];
         $cor_primaria = $_POST['cor_primaria'];
         $cor_secundaria = $_POST['cor_secundaria'];
+        $cnpj = $_POST['cnpj']; // [NEW] CNPJ UPDATE
         
-        $sql = "UPDATE igrejas SET nome=?, telefone=?, endereco=?, bairro=?, cidade=?, estado=?, cep=?, logo_url=?, cor_primaria=?, cor_secundaria=? WHERE id=?";
+        $sql = "UPDATE igrejas SET nome=?, telefone=?, endereco=?, bairro=?, cidade=?, estado=?, cep=?, logo_url=?, cor_primaria=?, cor_secundaria=?, cnpj=? WHERE id=?";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$nome, $telefone, $endereco, $bairro, $cidade, $estado, $cep, $logo_url, $cor_primaria, $cor_secundaria, $igreja_id]);
+        $stmt->execute([$nome, $telefone, $endereco, $bairro, $cidade, $estado, $cep, $logo_url, $cor_primaria, $cor_secundaria, $cnpj, $igreja_id]);
     } else {
         // Filial só atualiza dados cadastrais
         $sql = "UPDATE igrejas SET nome=?, telefone=?, endereco=?, bairro=?, cidade=?, estado=?, cep=? WHERE id=?";
@@ -273,6 +267,9 @@ if ($activeTab === 'pix') {
         <a href="index.php?page=configuracoes&tab=tema" class="pb-2 border-b-2 <?php echo $activeTab=='tema'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?>">
             Cores e Tema
         </a>
+        <a href="index.php?page=configuracoes&tab=assinatura" class="pb-2 border-b-2 <?php echo $activeTab=='assinatura'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?>">
+            Assinatura
+        </a>
     </div>
 
     <!-- TAB: PIX -->
@@ -386,6 +383,13 @@ if ($activeTab === 'pix') {
                 <label class="block text-sm font-bold text-gray-700 mb-1">Telefone / WhatsApp</label>
                 <input type="text" name="telefone" value="<?php echo e($tenantData['telefone'] ?? ''); ?>" class="w-full border rounded p-2">
             </div>
+            
+            <?php if(!$is_branch): ?>
+            <div class="col-span-1 md:col-span-2">
+                <label class="block text-sm font-bold text-gray-700 mb-1">CNPJ</label>
+                <input type="text" name="cnpj" value="<?php echo e($tenantData['cnpj'] ?? ''); ?>" class="w-full border rounded p-2 font-mono bg-gray-50 focus:bg-white transition" placeholder="00.000.000/0000-00">
+            </div>
+            <?php endif; ?>
             
             <div class="md:col-span-2"><hr class="my-2 border-gray-100"></div>
             
@@ -594,6 +598,12 @@ function openEditBranch(id, nome, email) {
 }
 </script>
 <?php endif; ?>
+
+<?php
+    if ($activeTab === 'assinatura') {
+        include __DIR__ . '/tab_assinatura.php';
+    }
+?>
 
 </div>
 

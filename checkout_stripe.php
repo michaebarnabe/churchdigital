@@ -4,6 +4,8 @@ define('ABSPATH', true);
 require_once 'config_stripe.php';
 
 $plan_id = $_GET['plan_id'] ?? null;
+$extra_membros_qty = (int)($_GET['extra_membros'] ?? 0);
+$extra_filiais_qty = (int)($_GET['extra_filiais'] ?? 0);
 $recovery_email = $_GET['recovery_email'] ?? '';
 $recovery_name = $_GET['recovery_name'] ?? '';
 
@@ -24,12 +26,15 @@ if (!$plan) {
 // Handle Form Submission (Provisioning -> Payment)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nome_igreja = $_POST['nome_igreja'];
+    $cnpj = preg_replace('/\D/', '', $_POST['cnpj'] ?? ''); // Sanitize CNPJ
     $admin_nome = $_POST['admin_nome'];
     $admin_email = $_POST['admin_email'];
     $admin_senha = $_POST['admin_senha']; 
     
-    // Validar Senha
-    if (strlen($admin_senha) < 8) {
+    // Validar CNPJ (Simple length check for now, can implement algorithm later)
+    if (strlen($cnpj) != 14) {
+        $error = "CNPJ inválido. Digite apenas números (14 dígitos).";
+    } elseif (strlen($admin_senha) < 8) {
         $error = "A senha deve ter pelo menos 8 caracteres.";
     } else {
         try {
@@ -39,10 +44,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->beginTransaction();
 
-            // CHECK DUPLICATE EMAIL LOGIC (With Recovery)
             $checkStmt = $pdo->prepare("SELECT u.id, u.igreja_id, a.status, a.id as sub_id FROM usuarios u JOIN assinaturas a ON u.igreja_id = a.igreja_id WHERE u.email = ?");
             $checkStmt->execute([$admin_email]);
             $existing = $checkStmt->fetch();
+
+            // Check duplicate CNPJ
+            $checkCnpj = $pdo->prepare("SELECT id FROM igrejas WHERE cnpj = ?");
+            $checkCnpj->execute([$cnpj]);
+            if ($checkCnpj->fetch()) {
+                throw new Exception("Este CNPJ já está cadastrado.");
+            }
 
             if ($existing) {
                 if ($existing['status'] === 'ativa') {
@@ -64,8 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // NEW USER FLOW
                 // 1. Create Tenant (Igreja)
-                $stmt = $pdo->prepare("INSERT INTO igrejas (nome, created_at) VALUES (?, NOW())");
-                $stmt->execute([$nome_igreja]);
+                $stmt = $pdo->prepare("INSERT INTO igrejas (nome, cnpj, created_at) VALUES (?, ?, NOW())");
+                $stmt->execute([$nome_igreja, $cnpj]);
                 $igrejaId = $pdo->lastInsertId();
 
                 // 2. Create Admin User
@@ -86,8 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isFree = ((float)$plan['preco'] <= 0.00);
                 $initialStatus = $isFree ? 'ativa' : 'pendente';
                 
-                $stmtSub = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, status, data_inicio, data_fim) VALUES (?, ?, ?, CURDATE(), NULL)");
-                $stmtSub->execute([$igrejaId, $plan['id'], $initialStatus]);
+                $stmtSub = $pdo->prepare("INSERT INTO assinaturas (igreja_id, plano_id, status, data_inicio, data_fim, extra_membros, extra_filiais) VALUES (?, ?, ?, CURDATE(), NULL, ?, ?)");
+                $stmtSub->execute([$igrejaId, $plan['id'], $initialStatus, $extra_membros_qty, $extra_filiais_qty]);
                 $subId = $pdo->lastInsertId();
             }
 
@@ -147,22 +158,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 5. Create Stripe Checkout Session (ONLY FOR PAID PLANS)
             $domain_url = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']); // Auto-detect base URL
             
-            $checkout_session = \Stripe\Checkout\Session::create([
-                'payment_method_types' => ['card'],
-                'line_items' => [[
+            // Prepare Line Items
+            $line_items = [[
+                'price_data' => [
+                     'currency' => 'brl',
+                     'unit_amount' => $plan['preco'] * 100, // Centavos
+                     'product_data' => [
+                         'name' => $plan['nome'] . ' - Mensal',
+                         'description' => 'Assinatura ChurchDigital',
+                     ],
+                     'recurring' => [
+                         'interval' => 'month',
+                     ],
+                ],
+                'quantity' => 1,
+            ]];
+
+            // Add Extras to Stripe Checkout
+            if ($extra_membros_qty > 0) {
+                $priceMembro = ($plan['preco_extra_membro'] ?? 0.30) * 100;
+                $line_items[] = [
                     'price_data' => [
                         'currency' => 'brl',
-                        'unit_amount' => $plan['preco'] * 100, // Centavos
-                        'product_data' => [
-                            'name' => $plan['nome'] . ' - Mensal',
-                            'description' => 'Assinatura ChurchDigital',
-                        ],
-                        'recurring' => [
-                            'interval' => 'month',
-                        ],
+                        'product_data' => ['name' => 'Membros Extras'],
+                        'unit_amount' => $priceMembro, 
+                        'recurring' => ['interval' => 'month'],
                     ],
-                    'quantity' => 1,
-                ]],
+                    'quantity' => $extra_membros_qty,
+                ];
+            }
+
+            if ($extra_filiais_qty > 0) {
+                $priceFilial = ($plan['preco_extra_filial'] ?? 12.90) * 100;
+                $line_items[] = [
+                    'price_data' => [
+                        'currency' => 'brl',
+                        'product_data' => ['name' => 'Filiais Extras'],
+                        'unit_amount' => $priceFilial, 
+                        'recurring' => ['interval' => 'month'],
+                    ],
+                    'quantity' => $extra_filiais_qty,
+                ];
+            }
+
+            $checkout_session = \Stripe\Checkout\Session::create([
+                'payment_method_types' => ['card'],
+                'line_items' => $line_items,
                 'mode' => 'subscription',
                 'success_url' => $domain_url . '/payment_success.php?session_id={CHECKOUT_SESSION_ID}&sub_id=' . $subId,
                 'cancel_url' => $domain_url . '/payment_cancel.php',
@@ -227,6 +268,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <li><i class="fas fa-check text-green-500 mr-2"></i> Cancelamento a qualquer momento</li>
                 </ul>
                 <a href="pricing.php" class="text-xs text-gray-400 hover:text-black hover:underline font-bold">Trocar de plano</a>
+                
+                <?php if($extra_membros_qty > 0 || $extra_filiais_qty > 0): ?>
+                <div class="mt-4 bg-gray-50 p-3 rounded text-xs text-gray-600">
+                    <strong>Extras inclusos:</strong><br>
+                    <?php if($extra_membros_qty > 0) echo "+ $extra_membros_qty Membros<br>"; ?>
+                    <?php if($extra_filiais_qty > 0) echo "+ $extra_filiais_qty Filiais<br>"; ?>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -254,6 +303,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="mb-4">
                         <label class="block text-sm font-bold text-gray-700 mb-1">Nome da Organização</label>
                         <input type="text" name="nome_igreja" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" required value="<?php echo $_POST['nome_igreja'] ?? ''; ?>">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">CNPJ</label>
+                        <input type="text" name="cnpj" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none transition" placeholder="00.000.000/0000-00" required value="<?php echo $_POST['cnpj'] ?? ''; ?>">
                     </div>
 
                     <h3 class="font-bold text-gray-900 mb-4 border-b pb-2 mt-8">2. Administrador Responsável</h3>

@@ -655,11 +655,26 @@ else {
         
         <!-- Header da Página -->
         <div class="flex justify-between items-center">
-            <h2 class="text-2xl font-bold text-gray-800">Membros</h2>
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800">Membros</h2>
+                <?php 
+                    $limit = PlanEnforcer::getLimit($pdo, 'membros');
+                    $count = count($membros);
+                    $color = ($count >= $limit) ? 'text-red-500' : 'text-gray-500';
+                ?>
+                <p class="text-sm <?php echo $color; ?> font-medium">Cadastrados: <?php echo $count; ?> / <?php echo $limit; ?></p>
+            </div>
+            
             <?php if ($can_edit): ?>
+                <?php if($count < $limit): ?>
                 <a href="index.php?page=membros&action=new" class="bg-primary text-white p-3 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:scale-105 transition transform">
                     <i class="fas fa-plus"></i>
                 </a>
+                <?php else: ?>
+                    <button onclick="alert('Limite do plano atingido! Contrate mais membros no Painel do Cliente.')" class="bg-gray-300 text-gray-500 p-3 rounded-full w-12 h-12 flex items-center justify-center cursor-not-allowed">
+                        <i class="fas fa-lock"></i>
+                    </button>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 

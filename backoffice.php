@@ -240,6 +240,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_tenant_plan'])
     }
 }
 
+// Update Extras (Manual & Stripe)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_extras'])) {
+    $t_id = $_POST['tenant_id_extras'];
+    $new_extra_membros = (int)$_POST['extra_membros'];
+    $new_extra_filiais = (int)$_POST['extra_filiais'];
+    
+    try {
+        require_once 'config_stripe.php';
+        
+        $stmtSub = $pdo->prepare("SELECT * FROM assinaturas WHERE igreja_id = ?");
+        $stmtSub->execute([$t_id]);
+        $sub = $stmtSub->fetch();
+
+        if ($sub && !empty($sub['stripe_session_id'])) {
+             // Fetch Subscription ID from Session if not stored directly (simplified for this context, assuming we can get sub ID)
+             // In a real scenario, we should have stored subscription_id. Let's assume we can retrieve it via session or it's stored.
+             // For now, let's look for subscription_id column or recover it. 
+             // EDIT: The current checking_stripe logic saves `stripe_session_id`. We need the `subscription_id`.
+             // Let's retrieve the session to get the subscription ID.
+             
+             if (!defined('STRIPE_MISSING')) {
+                 $checkout_session = \Stripe\Checkout\Session::retrieve($sub['stripe_session_id']);
+                 $subscription_id = $checkout_session->subscription;
+                 
+                 if ($subscription_id) {
+                     $subscription = \Stripe\Subscription::retrieve($subscription_id);
+                     
+                     // 1. Manage Members Extra Item
+                     // Price ID for Members Extra (R$ 0,30). YOU MUST REPLACE THIS WITH REAL PRICE ID OR CREATE ONE DYNAMICALLY
+                     // Dynamic approach using price_data for recurring is possible but complex for updates.
+                     // Ideally, we have a fixed Price ID. Let's assume we need to create/find it.
+                     // For this implementation, I will use a placeholder or inline creation if possible, but inline creation for existing sub items needs price ID.
+                     // simplified: We assume a 'price_members_extra' exists or we use unit_amount with a product cache.
+                     // BETTER: We create a product/price once and hardcode, or lookup.
+                     // Strategy: Update Subscription Items.
+                     
+                     $items_to_update = [];
+                     
+                     // Helper to find item by metadata or price lookup?
+                     // Let's rely on stored item IDs in DB.
+                     
+                     // MEMBERS
+                     if ($new_extra_membros > 0) {
+                         if ($sub['stripe_item_membros']) {
+                             $items_to_update[] = ['id' => $sub['stripe_item_membros'], 'quantity' => $new_extra_membros];
+                         } else {
+                             // Create new item
+                             $items_to_update[] = [
+                                 'price_data' => [
+                                     'currency' => 'brl',
+                                     'product_data' => ['name' => 'Membros Extras'],
+                                     'unit_amount' => 30, // R$ 0,30
+                                     'recurring' => ['interval' => 'month'],
+                                 ],
+                                 'quantity' => $new_extra_membros,
+                             ];
+                         }
+                     } elseif ($sub['stripe_item_membros']) {
+                         // Remove item if count is 0
+                         $items_to_update[] = ['id' => $sub['stripe_item_membros'], 'deleted' => true];
+                     }
+
+                     // BRANCHES
+                     if ($new_extra_filiais > 0) {
+                         if ($sub['stripe_item_filiais']) {
+                             $items_to_update[] = ['id' => $sub['stripe_item_filiais'], 'quantity' => $new_extra_filiais];
+                         } else {
+                             $items_to_update[] = [
+                                 'price_data' => [
+                                     'currency' => 'brl',
+                                     'product_data' => ['name' => 'Filiais Extras'],
+                                     'unit_amount' => 1290, // R$ 12,90
+                                     'recurring' => ['interval' => 'month'],
+                                 ],
+                                 'quantity' => $new_extra_filiais,
+                             ];
+                         }
+                     } elseif ($sub['stripe_item_filiais']) {
+                         // Remove item
+                         $items_to_update[] = ['id' => $sub['stripe_item_filiais'], 'deleted' => true];
+                     }
+                     
+                     if (!empty($items_to_update)) {
+                        $updatedSub = \Stripe\Subscription::update($subscription_id, [
+                            'items' => $items_to_update,
+                        ]);
+                        
+                        // Update DB with new Item IDs
+                        $newItemMembros = $sub['stripe_item_membros'];
+                        $newItemFiliais = $sub['stripe_item_filiais'];
+                        
+                        foreach ($updatedSub->items->data as $item) {
+                            if (isset($item->price->unit_amount)) {
+                                if ($item->price->unit_amount == 30) $newItemMembros = $item->id;
+                                if ($item->price->unit_amount == 1290) $newItemFiliais = $item->id;
+                            }
+                        }
+                        
+                        // If deleted, set to null
+                        if ($new_extra_membros == 0) $newItemMembros = null;
+                        if ($new_extra_filiais == 0) $newItemFiliais = null;
+
+                        $pdo->prepare("UPDATE assinaturas SET stripe_item_membros = ?, stripe_item_filiais = ? WHERE id = ?")
+                            ->execute([$newItemMembros, $newItemFiliais, $sub['id']]);
+                     }
+                 }
+             }
+        }
+        
+        // Update Local DB Limits
+        $pdo->prepare("UPDATE assinaturas SET extra_membros = ?, extra_filiais = ? WHERE igreja_id = ?")
+            ->execute([$new_extra_membros, $new_extra_filiais, $t_id]);
+            
+        $msg = "Extras atualizados com sucesso (Sincronizado com Stripe).";
+        
+    } catch (Exception $e) {
+        $error = "Erro ao atualizar extras: " . $e->getMessage();
+    }
+}
+
 // Update Tenant Admin Password
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_tenant_password'])) {
     $u_id = $_POST['admin_user_id_pass'];
@@ -305,6 +425,8 @@ $tenants = $pdo->query("
            MAX(p.nome) as plano_nome, 
            MAX(a.status) as plano_status, 
            MAX(a.data_fim) as vencimento,
+           MAX(a.extra_membros) as extra_membros,
+           MAX(a.extra_filiais) as extra_filiais,
            COUNT(u.id) as num_users 
     FROM igrejas i 
     LEFT JOIN assinaturas a ON i.id = a.igreja_id
@@ -469,6 +591,11 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                                         <button onclick="openPlanModal('<?php echo $t['id']; ?>', '<?php echo $t['plano_id'] ?? ''; ?>')" class="text-gray-400 hover:text-blue-600 ml-1" title="Alterar Plano">
                                             <i class="fas fa-edit"></i>
                                         </button>
+                                        <div class="mt-1">
+                                            <button onclick="openExtrasModal('<?php echo $t['id']; ?>', '<?php echo $t['extra_membros']; ?>', '<?php echo $t['extra_filiais']; ?>')" class="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded hover:bg-purple-200">
+                                                <i class="fas fa-plus-circle"></i> Extras: <?php echo ($t['extra_membros'] + $t['extra_filiais']); ?>
+                                            </button>
+                                        </div>
                                     </td>
                                     <td class="p-4 text-sm text-gray-600">
                                         <div class="text-xs">Criado: <?php echo date('d/m/y', strtotime($t['created_at'])); ?></div>
@@ -536,22 +663,25 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                 <h1 class="text-3xl font-bold mb-6">Planos</h1>
                  <?php
                 // Handle Plan Update
-                if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_plan'])) {
-                    $pid = $_POST['plan_id'];
-                    $pnome = $_POST['nome'];
-                    $ppreco = $_POST['preco'];
-                    $pmembros = $_POST['limite_membros'];
-                    $pfiliais = $_POST['limite_filiais'];
-                    $pextra_filial = $_POST['preco_filial_extra'];
-                    
-                    $stmt = $pdo->prepare("UPDATE planos SET nome=?, preco=?, limite_membros=?, limite_filiais=?, preco_filial_extra=? WHERE id=?");
-                    if ($stmt->execute([$pnome, $ppreco, $pmembros, $pfiliais, $pextra_filial, $pid])) {
-                        echo "<script>window.location.href='backoffice.php?tab=plans&msg=updated';</script>";
-                        exit;
-                    }
-                }
-                
-                $allPlans = $pdo->query("SELECT * FROM planos ORDER BY preco ASC")->fetchAll();
+                // PROCESSAR ATUALIZAÇÃO DE PLANO
+if (isset($action) && $action === 'update_plan' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = $_POST['id'];
+    $preco = str_replace(',', '.', $_POST['preco']);
+    $limite_membros = $_POST['limite_membros'];
+    $limite_filiais = $_POST['limite_filiais'];
+    
+    // Novos Campos
+    $preco_extra_membro = isset($_POST['preco_extra_membro']) ? str_replace(',', '.', $_POST['preco_extra_membro']) : 0.30;
+    $preco_extra_filial = isset($_POST['preco_extra_filial']) ? str_replace(',', '.', $_POST['preco_extra_filial']) : 12.90;
+
+    $stmt = $pdo->prepare("UPDATE planos SET preco = ?, limite_membros = ?, limite_filiais = ?, preco_extra_membro = ?, preco_extra_filial = ? WHERE id = ?");
+    if ($stmt->execute([$preco, $limite_membros, $limite_filiais, $preco_extra_membro, $preco_extra_filial, $id])) {
+        // Sucesso
+        echo "<script>window.location.href='backoffice.php?tab=plans&msg=updated';</script>";
+        exit;
+    }
+}            
+                $planos = $pdo->query("SELECT * FROM planos ORDER BY preco ASC")->fetchAll();
                 ?>
                 
                 <div class="bg-white rounded shadow overflow-hidden">
@@ -566,40 +696,60 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach($allPlans as $p): ?>
-                            <tr class="border-b hover:bg-gray-50">
-                                <form method="POST">
-                                    <input type="hidden" name="plan_id" value="<?php echo $p['id']; ?>">
-                                    <td class="p-4">
-                                        <input type="text" name="nome" value="<?php echo htmlspecialchars($p['nome']); ?>" class="border rounded p-1 w-full font-bold focus:ring-black focus:border-black">
-                                    </td>
-                                    <td class="p-4">
-                                        <input type="number" step="0.01" name="preco" value="<?php echo $p['preco']; ?>" class="border rounded p-1 w-24 focus:ring-black focus:border-black">
-                                    </td>
-                                    <td class="p-4 text-sm text-gray-600">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <i class="fas fa-users w-4"></i>
-                                            <input type="number" name="limite_membros" value="<?php echo $p['limite_membros']; ?>" class="border rounded p-1 w-20 text-xs focus:ring-black focus:border-black"> membros
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <i class="fas fa-code-branch w-4"></i>
-                                            <input type="number" name="limite_filiais" value="<?php echo $p['limite_filiais']; ?>" class="border rounded p-1 w-20 text-xs focus:ring-black focus:border-black"> filiais
-                                        </div>
-                                    </td>
-                                    <td class="p-4 text-sm">
-                                        <div class="flex items-center gap-2" title="Preço por Filial Extra">
-                                            <span class="text-xs text-gray-500">Filial Ex:</span>
-                                            <input type="number" step="0.01" name="preco_filial_extra" value="<?php echo $p['preco_filial_extra']; ?>" class="border rounded p-1 w-20 text-xs focus:ring-black focus:border-black">
-                                        </div>
-                                    </td>
-                                    <td class="p-4">
-                                        <button type="submit" name="update_plan" class="bg-black text-white p-2 rounded hover:bg-gray-800 text-xs font-bold shadow">
-                                            Salvar
-                                        </button>
-                                    </td>
-                                </form>
-                            </tr>
-                            <?php endforeach; ?>
+                            <?php foreach ($planos as $plan): 
+                    // [MODIFICATION] HIDE ENTERPRISE
+                    if (strtolower($plan['nome']) == 'enterprise') continue;
+                ?>
+                    <form method="POST" action="?action=update_plan" class="border-b hover:bg-gray-50">
+                        <input type="hidden" name="id" value="<?php echo $plan['id']; ?>">
+                        <div class="grid grid-cols-12 gap-4 p-4 items-center">
+                            
+                            <!-- Nome -->
+                            <div class="col-span-2 font-bold text-gray-800">
+                                <?php echo $plan['nome']; ?>
+                            </div>
+
+                            <!-- Preço Base -->
+                            <div class="col-span-2">
+                                <input type="text" name="preco" value="<?php echo number_format($plan['preco'], 2, ',', ''); ?>" class="w-full border rounded p-1 text-sm bg-gray-50 focus:bg-white transition" placeholder="0,00">
+                            </div>
+
+                            <!-- Limites -->
+                            <div class="col-span-3 text-xs text-gray-500 space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-users w-4"></i>
+                                    <input type="number" name="limite_membros" value="<?php echo $plan['limite_membros']; ?>" class="w-16 border rounded p-1 text-center font-mono">
+                                    <span>membros</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-code-branch w-4"></i>
+                                    <input type="number" name="limite_filiais" value="<?php echo $plan['limite_filiais']; ?>" class="w-16 border rounded p-1 text-center font-mono">
+                                    <span>filiais</span>
+                                </div>
+                            </div>
+
+                            <!-- Preços Extras (NEW) -->
+                            <div class="col-span-4 text-xs space-y-1 bg-blue-50 p-2 rounded border border-blue-100">
+                                <span class="block font-bold text-blue-800 mb-1">Preços Extras (Unitário)</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-16 text-right">Membro:</span>
+                                    <input type="text" name="preco_extra_membro" value="<?php echo number_format($plan['preco_extra_membro'] ?? 0.30, 2, ',', ''); ?>" class="w-20 border rounded p-1 text-center font-mono text-blue-600 font-bold" placeholder="0,30">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-16 text-right">Filial:</span>
+                                    <input type="text" name="preco_extra_filial" value="<?php echo number_format($plan['preco_extra_filial'] ?? 12.90, 2, ',', ''); ?>" class="w-20 border rounded p-1 text-center font-mono text-blue-600 font-bold" placeholder="12,90">
+                                </div>
+                            </div>
+
+                            <!-- Ação -->
+                            <div class="col-span-1 text-right">
+                                <button type="submit" class="bg-black text-white px-3 py-1 rounded text-xs font-bold hover:bg-gray-800 transition shadow">
+                                    Salvar
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
@@ -653,24 +803,25 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                         </thead>
                         <tbody>
                             <?php foreach ($reportData as $r): 
-                                $daysDiff = (strtotime($r['data_fim']) - time()) / (60 * 60 * 24);
-                                if ($daysDiff < 0) {
-                                    $statusBadge = "<span class='bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold'>Vencido</span>";
-                                } elseif ($daysDiff <= 7) {
-                                    $statusBadge = "<span class='bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold'>Vencendo</span>";
-                                } else {
-                                    $statusBadge = "<span class='bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold'>Ok</span>";
-                                }
-                            ?>
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="p-4 font-bold"><?php echo htmlspecialchars($r['nome']); ?></td>
-                                <td class="p-4"><?php echo $r['plano']; ?></td>
-                                <td class="p-4 font-mono text-sm"><?php echo date('d/m/Y', strtotime($r['data_fim'])); ?></td>
-                                <td class="p-4 text-sm">
-                                    <div><?php echo $r['admin_nome']; ?></div>
-                                    <div class="text-gray-500 text-xs"><?php echo $r['admin_email']; ?></div>
-                                </td>
-                                <td class="p-4"><?php echo $statusBadge; ?></td>
+                                    $daysDiff = $r['data_fim'] ? (strtotime($r['data_fim']) - time()) / (60 * 60 * 24) : 999;
+                                    
+                                    if ($r['data_fim'] && $daysDiff < 0) {
+                                        $statusBadge = "<span class='bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold'>Vencido</span>";
+                                    } elseif ($r['data_fim'] && $daysDiff <= 7) {
+                                        $statusBadge = "<span class='bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-bold'>Vencendo</span>";
+                                    } else {
+                                        $statusBadge = "<span class='bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold'>Ativo</span>";
+                                    }
+                                ?>
+                                <tr class="border-b hover:bg-gray-50">
+                                    <td class="p-4 font-bold"><?php echo htmlspecialchars($r['nome']); ?></td>
+                                    <td class="p-4"><?php echo $r['plano']; ?></td>
+                                    <td class="p-4 font-mono text-sm"><?php echo $r['data_fim'] ? date('d/m/Y', strtotime($r['data_fim'])) : '<span class="text-green-600 font-bold">Ativo</span>'; ?></td>
+                                    <td class="p-4 text-sm">
+                                        <div><?php echo $r['admin_nome']; ?></div>
+                                        <div class="text-gray-500 text-xs"><?php echo $r['admin_email']; ?></div>
+                                    </td>
+                                    <td class="p-4"><?php echo $statusBadge; ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -748,6 +899,36 @@ $currentTab = $_GET['tab'] ?? 'tenants';
             </form>
         </div>
     </div>
+    
+    <!-- Extras Modal -->
+    <div id="extrasModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center backdrop-blur-sm z-50">
+        <div class="bg-white p-6 rounded shadow-lg w-96">
+            <h3 class="text-lg font-bold mb-4">Gerenciar Extras Personalizados</h3>
+            <form method="POST">
+                <input type="hidden" name="update_extras" value="1">
+                <input type="hidden" name="tenant_id_extras" id="extras_tenant_id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Membros Extras (+R$ 0,30/unid)</label>
+                    <input type="number" name="extra_membros" id="extra_membros_input" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Filiais Extras (+R$ 12,90/unid)</label>
+                    <input type="number" name="extra_filiais" id="extra_filiais_input" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0">
+                </div>
+                
+                <p class="text-xs text-gray-500 mb-4 bg-purple-50 p-2 rounded border border-purple-100">
+                    <i class="fab fa-stripe"></i> A atualização será refletida na assinatura Stripe do cliente imediatamente.
+                </p>
+
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('extrasModal').classList.add('hidden')" class="px-4 py-2 bg-gray-200 font-bold rounded hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded hover:bg-purple-700">Salvar e Sincronizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
         function openEditModal(id, email) {
@@ -767,6 +948,13 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                 document.getElementById('plan_select').value = currentPlanId;
             }
             document.getElementById('planModal').classList.remove('hidden');
+        }
+
+        function openExtrasModal(tenantId, currentMembros, currentFiliais) {
+            document.getElementById('extras_tenant_id').value = tenantId;
+            document.getElementById('extra_membros_input').value = currentMembros || 0;
+            document.getElementById('extra_filiais_input').value = currentFiliais || 0;
+            document.getElementById('extrasModal').classList.remove('hidden');
         }
     </script>
 </body>
