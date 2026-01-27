@@ -37,7 +37,7 @@ class PlanEnforcer {
 
         if (!$plano) {
             // Fallback Free
-            $plano = ['limite_membros' => 50, 'limite_usuarios' => 1, 'limite_filiais' => 0];
+            $plano = ['limite_membros' => 50, 'limite_usuarios' => 1, 'limite_filiais' => 0, 'limite_patrimonio' => 50];
         }
 
         if ($resource === 'membros') {
@@ -48,6 +48,21 @@ class PlanEnforcer {
         }
         if ($resource === 'usuarios') {
             return $plano['limite_usuarios'];
+        }
+        if ($resource === 'patrimonio') {
+             // Lógica Custom/Pro/Free
+             // Se houver pacotes extras futuramente, adicionar aqui.
+             // Pro default = 120, Free default = 50.
+             // Vamos inferir pelo LIMITE DE MEMBROS se é PRO ou FREE, ou buscar nome do plano.
+             // Simplificação: Se limite_membros > 50 -> PRO (120), Senão FREE (50).
+             // OU melhor, adicionar coluna limite_patrimonio na tabela planos futuramente.
+             // Por agora, hardcoded conforme solicitado:
+             
+             // Check if PRO based on existing logic or data
+             $isPro = ($plano['limite_membros'] > 50); // Heuristic
+             $baseLimit = $isPro ? 120 : 50;
+             $extraPacks = 0; // $plano['extra_asset_packs'] ?? 0;
+             return $baseLimit + ($extraPacks * 100);
         }
         
         return 999999;
@@ -91,6 +106,19 @@ class PlanEnforcer {
             // Conta quantas filiais o dono do plano tem
             $count = $pdo->prepare("SELECT COUNT(*) FROM igrejas WHERE parent_id = ?");
             $count->execute([$planOwnerId]);
+            $current = $count->fetchColumn();
+        }
+        elseif ($resource === 'patrimonio') {
+            // Conta itens da Matriz + Filiais (se aplicável ao modelo, mas geralmente patrimonio é por Tenant)
+            // Se o plano é compartilhado (Matrix paga por tudo), contamos tudo.
+            $sqlCount = "
+                SELECT COUNT(*) 
+                FROM patrimonio_itens p 
+                JOIN igrejas i ON p.igreja_id = i.id 
+                WHERE (i.id = ? OR i.parent_id = ?) AND p.ativo = 1
+            ";
+            $count = $pdo->prepare($sqlCount);
+            $count->execute([$planOwnerId, $planOwnerId]);
             $current = $count->fetchColumn();
         }
         
