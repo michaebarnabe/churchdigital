@@ -63,11 +63,11 @@ try {
     <!-- Hero Section -->
     <section class="pt-32 pb-20 lg:pt-48 lg:pb-32 px-4 relative overflow-hidden">
         <!-- Background Elements -->
-        <div class="absolute top-0 right-0 -z-10 opacity-30 translate-x-1/3 -translate-y-1/4">
-            <svg viewBox="0 0 1000 1000" class="w-[800px] h-[800px] text-blue-100 fill-current"><circle cx="500" cy="500" r="500"/></svg>
+        <div class="absolute top-0 right-0 -z-10 opacity-10 translate-x-1/3 -translate-y-1/4">
+            <svg viewBox="0 0 1000 1000" class="w-[800px] h-[800px] text-gray-900 fill-current"><circle cx="500" cy="500" r="500"/></svg>
         </div>
-        <div class="absolute bottom-0 left-0 -z-10 opacity-30 -translate-x-1/2 translate-y-1/4">
-            <svg viewBox="0 0 1000 1000" class="w-[600px] h-[600px] text-purple-100 fill-current"><circle cx="500" cy="500" r="500"/></svg>
+        <div class="absolute bottom-0 left-0 -z-10 opacity-10 -translate-x-1/2 translate-y-1/4">
+            <svg viewBox="0 0 1000 1000" class="w-[600px] h-[600px] text-gray-900 fill-current"><circle cx="500" cy="500" r="500"/></svg>
         </div>
 
         <div class="max-w-7xl mx-auto text-center relative z-10">
@@ -94,22 +94,13 @@ try {
                 </a>
             </div>
             
-            <div class="mt-16 relative mx-auto max-w-5xl shadow-2xl rounded-2xl border border-gray-200 overflow-hidden bg-white">
-                <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 flex gap-2">
-                    <div class="w-3 h-3 rounded-full bg-red-400"></div>
-                    <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
-                    <div class="w-3 h-3 rounded-full bg-green-400"></div>
-                </div>
-                <!-- Placeholder for Dashboard Image -->
-                <div class="aspect-video bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center text-gray-300">
-                   <i class="fas fa-chart-line text-6xl opacity-20"></i>
-                </div>
-            </div>
+            <!-- Removed Dashboard Placeholder as requested -->
         </div>
     </section>
 
     <!-- Social Proof (HIDDEN FOR NOW) -->
-    <section class="py-10 border-y border-gray-100 bg-gray-50 hidden">
+    <!-- Social Proof -->
+    <section class="py-10 border-y border-gray-100 bg-gray-50">
         <div class="max-w-7xl mx-auto px-4 text-center">
             <p class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6">Confiado por grandes ministérios</p>
             <div class="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
