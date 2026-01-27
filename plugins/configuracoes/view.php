@@ -249,7 +249,7 @@ if ($activeTab === 'pix') {
     <?php endif; ?>
 
     <!-- TABS -->
-    <div class="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto">
+    <div class="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto whitespace-nowrap no-scrollbar pb-1">
         <a href="index.php?page=configuracoes&tab=dados" class="pb-2 border-b-2 <?php echo $activeTab=='dados'?'border-primary text-primary font-bold':'border-transparent text-gray-500'; ?>">
             Dados da Igreja
         </a>

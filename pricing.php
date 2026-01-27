@@ -36,11 +36,11 @@ try {
     <!-- Header -->
     <header class="fixed w-full bg-white/90 backdrop-blur-md shadow-sm z-50 transition-all duration-300">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-black rounded-lg flex items-center justify-center text-white">
-                     <i class="fas fa-church text-xl"></i>
+            <div class="flex items-center gap-2 md:gap-3 flex-shrink-0">
+                <div class="w-8 h-8 md:w-10 md:h-10 bg-black rounded-lg flex items-center justify-center text-white">
+                     <i class="fas fa-church text-base md:text-xl"></i>
                 </div>
-                <span class="font-extrabold text-2xl tracking-tighter text-gray-900">ChurchDigital</span>
+                <span class="font-extrabold text-lg md:text-2xl tracking-tighter text-gray-900">ChurchDigital</span>
             </div>
 
             <nav class="hidden md:flex gap-8 text-sm font-medium text-gray-600">
@@ -49,11 +49,11 @@ try {
                 <a href="#faq" class="hover:text-black transition">FAQ</a>
             </nav>
 
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 md:gap-4">
                 <a href="login.php" class="text-sm font-bold text-gray-900 hover:text-gray-600 transition hidden sm:block">
                     Entrar
                 </a>
-                <a href="#planos" class="bg-black text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                <a href="#planos" class="bg-black text-white px-4 py-2 md:px-6 md:py-2.5 rounded-full text-xs md:text-sm font-bold hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap">
                     Começar Agora
                 </a>
             </div>
