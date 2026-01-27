@@ -261,6 +261,24 @@ include 'templates/header.php';
                 </a>
 
             </div>
+            
+            <!-- Dynamic Plugins Menu -->
+            <?php if (count($global_menu_items) > 0): ?>
+                <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 mt-4">
+                    <?php foreach ($global_menu_items as $item): ?>
+                        <?php 
+                            // Check Role Access
+                            if ($item['role'] && !has_role($item['role'])) continue;
+                        ?>
+                        <a href="<?php echo $item['url']; ?>" class="flex flex-col items-center justify-center p-4 bg-white shadow-sm hover:shadow-md rounded-xl transition group">
+                            <div class="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mb-2 group-hover:scale-110 transition">
+                                <i class="fas <?php echo $item['icon']; ?>"></i>
+                            </div>
+                            <span class="text-sm font-bold text-gray-700"><?php echo $item['label']; ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
 
     </div>
