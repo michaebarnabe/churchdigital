@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
                 $data = base64_decode($data);
                 if ($data !== false) {
                     $uploadDir = 'uploads/';
-                    if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+                    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
                     
                     $fileName = uniqid('membro_') . '.' . $type;
                     file_put_contents($uploadDir . $fileName, $data);
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
     // 2. Fallback to Standard Upload (if no crop happened but file was sent differently?? Rare with cropper)
     elseif (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
         $uploadDir = 'uploads/';
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         
         $ext = pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION);
         $fileName = uniqid('membro_') . '.' . $ext;
@@ -312,22 +312,30 @@ if ($action === 'new' || $action === 'edit') {
                             height: 300,
                         });
                         
-                        const base64Url = canvas.toDataURL('image/jpeg');
-                        
-                        // Update UI
-                        previewAvatar.src = base64Url;
-                        previewAvatar.classList.remove('hidden');
-                        defaultAvatarIcon.classList.add('hidden');
-                        
-                        // Update Hidden Input
-                        fotoBase64.value = base64Url;
-                        
-                        // Close Modal
-                        modal.classList.add('hidden');
-                        cropper.destroy();
-                        cropper = null;
-                        
-                        document.getElementById('labelFoto').innerText = 'Foto Definida!';
+                        // FIX 403 ERROR: Convert to Blob (File) instead of Base64 String
+                        // This avoids sending a massive text string which WAF/ModSecurity blocks
+                        canvas.toBlob(function(blob) {
+                            const file = new File([blob], "avatar_recortado.jpg", { type: "image/jpeg" });
+                            const dt = new DataTransfer();
+                            dt.items.add(file);
+                            inputImage.files = dt.files;
+
+                            // Update UI
+                            const url = URL.createObjectURL(blob);
+                            previewAvatar.src = url;
+                            previewAvatar.classList.remove('hidden');
+                            defaultAvatarIcon.classList.add('hidden');
+                            
+                            // Clear hidden base64 to ensure PHP uses $_FILES
+                            fotoBase64.value = '';
+                            
+                            // Close Modal
+                            modal.classList.add('hidden');
+                            cropper.destroy();
+                            cropper = null;
+                            
+                            document.getElementById('labelFoto').innerText = 'Foto Pronta!';
+                        }, 'image/jpeg', 0.9);
                     });
 
                     btnCancelCrop.addEventListener('click', function() {
