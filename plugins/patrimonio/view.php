@@ -2,6 +2,11 @@
 // plugins/patrimonio/view.php
 
 $action = $_GET['action'] ?? 'list';
+// Se for POST, priorizar a ação enviada pelo formulário (hidden field)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'];
+}
+
 $tab = $_GET['tab'] ?? 'individuais'; // individuais | lotes
 $msg = $_GET['msg'] ?? '';
 
@@ -180,7 +185,28 @@ if ($action === 'new' || $action === 'edit') {
                 </div>
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Localização</label>
-                    <input type="text" name="local" value="<?php echo e($item['local']??''); ?>" class="w-full border rounded p-2" placeholder="Ex: Templo Principal">
+                    <?php
+                        // Fetch Locations (Self + Branches)
+                        $locais = [];
+                        // 1. Matriz/Sede
+                        // Check if current tenant is branch -> get Parent name? Or just use current name.
+                        // Assuming current tenant context.
+                        $tSelf = $pdo->query("SELECT nome FROM igrejas WHERE id=$igreja_id")->fetchColumn();
+                        $locais[] = $tSelf . " (Sede/Atual)"; // Label clarity
+                        
+                        // 2. Filiais (If any) - Only if Matriz
+                        $tBranches = $pdo->query("SELECT nome FROM igrejas WHERE parent_id=$igreja_id")->fetchAll(PDO::FETCH_COLUMN);
+                        foreach($tBranches as $bName) $locais[] = $bName;
+                    ?>
+                    <select name="local" class="w-full border rounded p-2">
+                        <option value="">-- Selecione --</option>
+                        <?php foreach($locais as $loc): 
+                             $val = explode(' (', $loc)[0]; // Clean value
+                        ?>
+                            <option value="<?php echo e($val); ?>" <?php echo ($item['local']??'')==$val?'selected':''; ?>><?php echo e($loc); ?></option>
+                        <?php endforeach; ?>
+                        <option value="Outro" <?php echo ($item['local']??'')=='Outro'?'selected':''; ?>>Outro (Digitar na Obs)</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Foto (Opcional)</label>
@@ -356,13 +382,9 @@ if ($action === 'new' || $action === 'edit') {
 }
 // --- VIEW: LIST ---
 else {
-    // Current Usage
-    $currentUsage = $pdo->prepare("SELECT COUNT(*) FROM patrimonio_itens WHERE igreja_id = ? AND ativo = 1");
-    $currentUsage->execute([$igreja_id]); // Simplified per tenant for List View context, PlanEnforcer handles Matrix correct count
-    // TO DO: Show user friendly limit bar (Need PlanEnforcer limit info here too)
-    $limit = PlanEnforcer::getLimit($pdo, 'patrimonio');
-    // Re-count correctly for limit display using PlanEnforcer Logic (Raw SQL for simplicity here)
-    // Actually let's trust PlanEnforcer::canAdd logic implicitly for buttons, but for display let's do a simple count relative to *this* tenant for now or replicate PlanEnforcer count if Matrix.
+    // List View Logic
+    // Usage is now calculated in header block
+
     
     // For List Logic, let's just list items of THIS tenant.
     $tipoFilter = substr($tab, 0, -1); // individuais -> individual, lotes -> lote
@@ -379,9 +401,25 @@ else {
 ?>
     <div class="fade-in pb-20">
         <div class="flex justify-between items-center mb-6">
+            <?php
+                $limit = PlanEnforcer::getLimit($pdo, 'patrimonio');
+                // Count active items
+                $currentUsage = $pdo->prepare("SELECT COUNT(*) FROM patrimonio_itens WHERE igreja_id = ? AND ativo = 1");
+                $currentUsage->execute([$igreja_id]);
+                $used = $currentUsage->fetchColumn();
+                $pct = min(100, ($used / $limit) * 100);
+            ?>
             <div>
                 <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-boxes text-primary mr-2"></i> Patrimônio</h2>
                 <span class="text-sm text-gray-500">Gerencie seus bens e equipamentos</span>
+                
+                <!-- Limit Indicator -->
+                <div class="mt-2 text-xs font-bold text-gray-500 flex items-center gap-2">
+                    <div class="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div class="bg-primary h-full transition-all duration-500" style="width: <?php echo $pct; ?>%"></div>
+                    </div>
+                    <span><?php echo $used; ?> / <?php echo $limit; ?> itens</span>
+                </div>
             </div>
             <?php if(PlanEnforcer::canAdd($pdo, 'patrimonio')): ?>
             <a href="index.php?page=patrimonio&action=new" class="bg-black text-white px-4 py-2 rounded-lg font-bold hover:bg-gray-800 transition shadow-lg">
@@ -463,10 +501,19 @@ else {
                                     </div>
                                 <?php endif; ?>
                             </div>
+                            
+                            <!-- ACTIONS -->
+                            <div class="mt-4 flex gap-2 justify-end border-t pt-2 z-20 relative">
+                                <a href="index.php?page=patrimonio&action=edit&id=<?php echo $item['id']; ?>" class="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1 rounded border border-blue-200 transition">
+                                    <i class="fas fa-edit mr-1"></i> Editar
+                                </a>
+                                <a href="index.php?page=patrimonio&action=delete&id=<?php echo $item['id']; ?>" onclick="return confirm('Tem certeza?');" class="text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-1 rounded border border-red-200 transition">
+                                    <i class="fas fa-trash mr-1"></i> Excluir
+                                </a>
+                            </div>
                         </div>
 
-                        <!-- Link Overlay -->
-                        <a href="index.php?page=patrimonio&action=edit&id=<?php echo $item['id']; ?>" class="absolute inset-0 z-10 block"></a>
+                        <!-- Link Overlay (Removed to allow button clicks) -->
                     </div>
                 <?php endforeach; ?>
             </div>

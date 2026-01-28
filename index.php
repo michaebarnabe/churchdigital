@@ -269,15 +269,28 @@ include 'templates/header.php';
                         <?php 
                             // Check Role Access
                             if ($item['role'] && !has_role($item['role'])) continue;
+                            
+                            $isPatrimonio = (strpos($item['label'], 'Patrimônio') !== false);
                         ?>
-                        <a href="<?php echo $item['url']; ?>" class="flex flex-col items-center justify-center p-4 bg-white shadow-sm hover:shadow-md rounded-xl transition group">
+                        <a href="<?php echo $item['url']; ?>" <?php if($isPatrimonio): ?>onclick="localStorage.setItem('clicked_patrimonio', 'true');"<?php endif; ?> class="relative flex flex-col items-center justify-center p-4 bg-white shadow-sm hover:shadow-md rounded-xl transition group">
                             <div class="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mb-2 group-hover:scale-110 transition">
                                 <i class="fas <?php echo $item['icon']; ?>"></i>
                             </div>
                             <span class="text-sm font-bold text-gray-700"><?php echo $item['label']; ?></span>
+                            
+                            <?php if($isPatrimonio): ?>
+                                <span id="badge-patrimonio" class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse hidden">NOVO</span>
+                            <?php endif; ?>
                         </a>
                     <?php endforeach; ?>
                 </div>
+                <!-- Badge Logic -->
+                <script>
+                    if (!localStorage.getItem('clicked_patrimonio')) {
+                        const badge = document.getElementById('badge-patrimonio');
+                        if (badge) badge.classList.remove('hidden');
+                    }
+                </script>
             <?php endif; ?>
         </div>
 

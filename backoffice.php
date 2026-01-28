@@ -245,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_extras'])) {
     $t_id = $_POST['tenant_id_extras'];
     $new_extra_membros = (int)$_POST['extra_membros'];
     $new_extra_filiais = (int)$_POST['extra_filiais'];
+    $new_extra_patrimonio = (int)$_POST['extra_patrimonio'];
     
     try {
         require_once 'config_stripe.php';
@@ -350,8 +351,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_extras'])) {
         }
         
         // Update Local DB Limits
-        $pdo->prepare("UPDATE assinaturas SET extra_membros = ?, extra_filiais = ? WHERE igreja_id = ?")
-            ->execute([$new_extra_membros, $new_extra_filiais, $t_id]);
+        $pdo->prepare("UPDATE assinaturas SET extra_membros = ?, extra_filiais = ?, extra_patrimonio = ? WHERE igreja_id = ?")
+            ->execute([$new_extra_membros, $new_extra_filiais, $new_extra_patrimonio, $t_id]);
             
         $msg = "Extras atualizados com sucesso (Sincronizado com Stripe).";
         
@@ -427,6 +428,7 @@ $tenants = $pdo->query("
            MAX(a.data_fim) as vencimento,
            MAX(a.extra_membros) as extra_membros,
            MAX(a.extra_filiais) as extra_filiais,
+           MAX(a.extra_patrimonio) as extra_patrimonio,
            COUNT(u.id) as num_users 
     FROM igrejas i 
     LEFT JOIN assinaturas a ON i.id = a.igreja_id
@@ -592,8 +594,8 @@ $currentTab = $_GET['tab'] ?? 'tenants';
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <div class="mt-1">
-                                            <button onclick="openExtrasModal('<?php echo $t['id']; ?>', '<?php echo $t['extra_membros']; ?>', '<?php echo $t['extra_filiais']; ?>')" class="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded hover:bg-purple-200">
-                                                <i class="fas fa-plus-circle"></i> Extras: <?php echo ($t['extra_membros'] + $t['extra_filiais']); ?>
+                                            <button onclick="openExtrasModal('<?php echo $t['id']; ?>', '<?php echo $t['extra_membros']; ?>', '<?php echo $t['extra_filiais']; ?>', '<?php echo $t['extra_patrimonio']; ?>')" class="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-1 rounded hover:bg-purple-200">
+                                                <i class="fas fa-plus-circle"></i> Extras: <?php echo ($t['extra_membros'] + $t['extra_filiais'] + $t['extra_patrimonio']); ?>
                                             </button>
                                         </div>
                                     </td>
@@ -673,9 +675,10 @@ if (isset($action) && $action === 'update_plan' && $_SERVER['REQUEST_METHOD'] ==
     // Novos Campos
     $preco_extra_membro = isset($_POST['preco_extra_membro']) ? str_replace(',', '.', $_POST['preco_extra_membro']) : 0.30;
     $preco_extra_filial = isset($_POST['preco_extra_filial']) ? str_replace(',', '.', $_POST['preco_extra_filial']) : 12.90;
+    $preco_extra_patrimonio = isset($_POST['preco_extra_patrimonio']) ? str_replace(',', '.', $_POST['preco_extra_patrimonio']) : 0.10;
 
-    $stmt = $pdo->prepare("UPDATE planos SET preco = ?, limite_membros = ?, limite_filiais = ?, preco_extra_membro = ?, preco_extra_filial = ? WHERE id = ?");
-    if ($stmt->execute([$preco, $limite_membros, $limite_filiais, $preco_extra_membro, $preco_extra_filial, $id])) {
+    $stmt = $pdo->prepare("UPDATE planos SET preco = ?, limite_membros = ?, limite_filiais = ?, preco_extra_membro = ?, preco_extra_filial = ?, preco_extra_patrimonio = ? WHERE id = ?");
+    if ($stmt->execute([$preco, $limite_membros, $limite_filiais, $preco_extra_membro, $preco_extra_filial, $preco_extra_patrimonio, $id])) {
         // Sucesso
         echo "<script>window.location.href='backoffice.php?tab=plans&msg=updated';</script>";
         exit;
@@ -735,9 +738,11 @@ if (isset($action) && $action === 'update_plan' && $_SERVER['REQUEST_METHOD'] ==
                                     <span class="w-16 text-right">Membro:</span>
                                     <input type="text" name="preco_extra_membro" value="<?php echo number_format($plan['preco_extra_membro'] ?? 0.30, 2, ',', ''); ?>" class="w-20 border rounded p-1 text-center font-mono text-blue-600 font-bold" placeholder="0,30">
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <span class="w-16 text-right">Filial:</span>
                                     <input type="text" name="preco_extra_filial" value="<?php echo number_format($plan['preco_extra_filial'] ?? 12.90, 2, ',', ''); ?>" class="w-20 border rounded p-1 text-center font-mono text-blue-600 font-bold" placeholder="12,90">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-16 text-right">Patrim.:</span>
+                                    <input type="text" name="preco_extra_patrimonio" value="<?php echo number_format($plan['preco_extra_patrimonio'] ?? 0.10, 2, ',', ''); ?>" class="w-20 border rounded p-1 text-center font-mono text-blue-600 font-bold" placeholder="0,10">
                                 </div>
                             </div>
 
@@ -914,8 +919,12 @@ if (isset($action) && $action === 'update_plan' && $_SERVER['REQUEST_METHOD'] ==
                 </div>
                 
                 <div class="mb-4">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Filiais Extras (+R$ 12,90/unid)</label>
                     <input type="number" name="extra_filiais" id="extra_filiais_input" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Patrimônio Extra (+R$ 0,10/item)</label>
+                    <input type="number" name="extra_patrimonio" id="extra_patrimonio_input" class="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500 outline-none" placeholder="0">
                 </div>
                 
                 <p class="text-xs text-gray-500 mb-4 bg-purple-50 p-2 rounded border border-purple-100">
@@ -954,6 +963,7 @@ if (isset($action) && $action === 'update_plan' && $_SERVER['REQUEST_METHOD'] ==
             document.getElementById('extras_tenant_id').value = tenantId;
             document.getElementById('extra_membros_input').value = currentMembros || 0;
             document.getElementById('extra_filiais_input').value = currentFiliais || 0;
+            document.getElementById('extra_patrimonio_input').value = arguments[3] || 0;
             document.getElementById('extrasModal').classList.remove('hidden');
         }
     </script>

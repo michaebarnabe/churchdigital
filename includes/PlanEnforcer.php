@@ -50,19 +50,14 @@ class PlanEnforcer {
             return $plano['limite_usuarios'];
         }
         if ($resource === 'patrimonio') {
-             // Lógica Custom/Pro/Free
-             // Se houver pacotes extras futuramente, adicionar aqui.
-             // Pro default = 120, Free default = 50.
-             // Vamos inferir pelo LIMITE DE MEMBROS se é PRO ou FREE, ou buscar nome do plano.
-             // Simplificação: Se limite_membros > 50 -> PRO (120), Senão FREE (50).
-             // OU melhor, adicionar coluna limite_patrimonio na tabela planos futuramente.
-             // Por agora, hardcoded conforme solicitado:
+             // 1. Base Limit from Plan columns (Need to add limite_patrimonio to planos table eventually)
+             // For now, heuristic or default.
+             $baseLimit = ($plano['limite_membros'] > 50) ? 120 : 50; 
              
-             // Check if PRO based on existing logic or data
-             $isPro = ($plano['limite_membros'] > 50); // Heuristic
-             $baseLimit = $isPro ? 120 : 50;
-             $extraPacks = 0; // $plano['extra_asset_packs'] ?? 0;
-             return $baseLimit + ($extraPacks * 100);
+             // 2. Extra Limit from Subscription
+             $extra = $plano['extra_patrimonio'] ?? 0;
+             
+             return $baseLimit + $extra;
         }
         
         return 999999;
