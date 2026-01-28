@@ -121,6 +121,46 @@ include 'templates/header.php';
             <i class="fas fa-church text-4xl opacity-20"></i>
         </div>
 
+        <!-- PWA INSTALL CARD (Android/Chrome) -->
+        <div id="pwa-install-card" class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg p-5 md:col-span-2 lg:col-span-3 text-white hidden relative overflow-hidden transition-all duration-500">
+            <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                        <i class="fas fa-mobile-alt text-2xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">Instalar Aplicativo</h3>
+                        <p class="text-sm opacity-90">Tenha acesso rápido e notificações direto no seu celular.</p>
+                    </div>
+                </div>
+                <button id="pwa-install-btn" class="bg-white text-purple-700 font-bold py-2 px-6 rounded-full shadow-md hover:bg-gray-100 transition transform hover:scale-105 active:scale-95 w-full md:w-auto text-center">
+                    📲 Instalar aplicativo
+                </button>
+            </div>
+            <!-- Decorative circle -->
+            <div class="absolute -right-10 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        </div>
+
+        <!-- iOS INSTALL CARD (Safari) -->
+        <div id="ios-install-card" class="bg-gray-800 rounded-xl shadow-lg p-5 md:col-span-2 lg:col-span-3 text-white hidden relative border border-gray-700">
+            <div class="flex flex-col md:flex-row items-start md:items-center gap-4">
+                <div class="bg-gray-700 p-3 rounded-lg shrink-0">
+                    <i class="fab fa-apple text-2xl text-gray-300"></i>
+                </div>
+                <div class="flex-grow">
+                    <h3 class="font-bold text-lg mb-1">Instalar no iPhone/iPad</h3>
+                    <p class="text-sm text-gray-300 mb-2">Para instalar este aplicativo e ter uma experiência melhor:</p>
+                    <ol class="text-sm text-gray-300 space-y-1 ml-4 list-decimal">
+                        <li>Toque no botão <strong>Compartilhar</strong> <i class="fas fa-share-square mx-1 text-blue-400"></i> abaixo na barra do navegador.</li>
+                        <li>Role e selecione <strong>Adicionar à Tela de Início</strong> <i class="fas fa-plus-square mx-1"></i>.</li>
+                    </ol>
+                </div>
+                <button onclick="document.getElementById('ios-install-card').style.display='none'" class="absolute top-2 right-2 text-gray-500 hover:text-white p-2">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
         <!-- 1. MÓDULO: MEMBROS (Only Staff) -->
         <?php if ($is_staff): ?>
             <div class="bg-white rounded-xl shadow p-5 border-l-4 border-blue-500 hover:shadow-md transition cursor-pointer" onclick="window.location='index.php?page=membros'">
@@ -358,6 +398,71 @@ include 'templates/header.php';
     }
 }
 
+?>
+    <!-- PWA Logic Script -->
+    <script>
+        // 1. Android / Desktop (Chrome/Edge) Installation Logic
+        let deferredPrompt;
+        const pwaCard = document.getElementById('pwa-install-card');
+        const installBtn = document.getElementById('pwa-install-btn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            deferredPrompt = e;
+            // Update UI notify the user they can install the PWA
+            console.log('PWA: Install Prompt intercepted');
+            if(pwaCard) pwaCard.classList.remove('hidden');
+        });
+
+        if(installBtn) {
+            installBtn.addEventListener('click', async () => {
+                // Hide the app provided install promotion
+                if(pwaCard) pwaCard.classList.add('hidden');
+                // Show the install prompt
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    // Wait for the user to respond to the prompt
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`PWA: User response to install prompt: ${outcome}`);
+                    // We've used the prompt, and can't use it again, throw it away
+                    deferredPrompt = null;
+                }
+            });
+        }
+
+        window.addEventListener('appinstalled', () => {
+            // Hide the app-provided install promotion
+            if(pwaCard) pwaCard.classList.add('hidden');
+            // Clear the deferredPrompt so it can be garbage collected
+            deferredPrompt = null;
+            console.log('PWA: App was installed.');
+        });
+
+        // 2. iOS Installation Instruction Logic
+        // Detects if it's an iOS device AND NOT in standalone mode
+        const isIos = /iphone|ipad|ipod/.test( window.navigator.userAgent.toLowerCase() );
+        const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator.standalone);
+        
+        // Also check if display-mode is standalone (Generic)
+        const isGenericStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+        if (isIos && !isInStandaloneMode && !isGenericStandalone) {
+             const iosCard = document.getElementById('ios-install-card');
+             // Show iOS card
+             if(iosCard) iosCard.classList.remove('hidden');
+        }
+
+        // 3. General Cleanup if running as App
+        if (isInStandaloneMode || isGenericStandalone) {
+            if(pwaCard) pwaCard.classList.add('hidden'); // Ensure hidden
+            const iosCard = document.getElementById('ios-install-card');
+            if(iosCard) iosCard.classList.add('hidden');
+        }
+    </script>
+
+<?php
 // Include Footer
 include 'templates/footer.php'; 
 ?>
