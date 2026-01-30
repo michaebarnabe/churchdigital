@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
     $data_inicio = $_POST['data_inicio'] ?: null;
     $filial = $_POST['filial'] ?? '';
     $filial = $_POST['filial'] ?? '';
+    $sexo = $_POST['sexo'] ?? 'M'; // [FIX] Capture Gender from Form
     $cargo = $_POST['cargo'] ?? 'Membro'; // Novo campo
     
     // Novos Campos
@@ -105,8 +106,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
         if ($id && $action === 'update') {
             // UPDATE
             // Reverted: Do NOT update igreja_id. Members stay where they were unless admin switches context.
-            $sql = "UPDATE membros SET nome=?, telefone=?, data_nascimento=?, data_batismo=?, data_inicio=?, filial=?, cargo=?, foto=?, email=?, naturalidade=?, estado_civil=?, profissao=?, cep=?, endereco=?, bairro=?, cidade=?, estado=?, pais=?, nacionalidade=?, nome_pai=?, nome_mae=?";
-            $params = [$nome, $telefone, $nascimento, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email, $naturalidade, $estado_civil, $profissao, $cep, $endereco, $bairro, $cidade, $estado, $pais, $nacionalidade, $nome_pai, $nome_mae];  // filial param matches $filial (legacy)
+            // Reverted: Do NOT update igreja_id. Members stay where they were unless admin switches context.
+            $sql = "UPDATE membros SET nome=?, telefone=?, data_nascimento=?, sexo=?, data_batismo=?, data_inicio=?, filial=?, cargo=?, foto=?, email=?, naturalidade=?, estado_civil=?, profissao=?, cep=?, endereco=?, bairro=?, cidade=?, estado=?, pais=?, nacionalidade=?, nome_pai=?, nome_mae=?";
+            $params = [$nome, $telefone, $nascimento, $sexo, $data_batismo, $data_inicio, $filial, $cargo, $foto_path, $email, $naturalidade, $estado_civil, $profissao, $cep, $endereco, $bairro, $cidade, $estado, $pais, $nacionalidade, $nome_pai, $nome_mae];  // filial param matches $filial (legacy)
 
             
             // Update password only if provided
@@ -166,6 +168,9 @@ if ($action === 'new' || $action === 'edit') {
     $email = $membro['email'] ?? '';
     $foto = $membro['foto'] ?? '';
     $id = $membro['id'] ?? '';
+    
+    // FIX: Explicitly set Gender
+    $sexo = $membro['sexo'] ?? 'M';
     
     // Novos Campos
     $naturalidade = $membro['naturalidade'] ?? '';

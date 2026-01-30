@@ -297,7 +297,9 @@ try {
                 <span class="font-bold text-xl">ChurchDigital</span>
             </div>
             <p class="mb-4 text-sm">&copy; <?php echo date('Y'); ?> ChurchDigital. Todos os direitos reservados.</p>
-            <div class="flex justify-center gap-6">
+            <div class="flex justify-center gap-6 flex-wrap">
+                <a href="manual_membro.php" class="hover:text-white transition font-bold text-gray-300">Manual do Membro</a>
+                <a href="manual_tesoureiro.php" class="hover:text-white transition font-bold text-gray-300">Manual do Tesoureiro</a>
                 <a href="#" class="hover:text-white transition">Termos de Uso</a>
                 <a href="#" class="hover:text-white transition">Privacidade</a>
                 <a href="#" class="hover:text-white transition">Contato</a>

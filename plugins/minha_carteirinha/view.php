@@ -3,20 +3,20 @@
 
 // Apenas membros podem ver isso
 // Se for staff (admin), pode ver também para debugging
-if (has_role('Membro') || has_role('admin')) {
+// Apenas membros podem ver isso
+// Se for staff (admin/tesoureiro) vinculado, pode ver também
+if (has_role('Membro') || !empty($_SESSION['membro_id'])) {
     // Busca dados atualizados do membro
-    if (has_role('Membro')) {
+    if (!empty($_SESSION['membro_id'])) {
+         // Staff vinculado ou Membro com ID explícito
+        $membro_id = $_SESSION['membro_id'];
+    } elseif (has_role('Membro')) {
+        // Membro logado diretamente (sem vínculo staff)
         $membro_id = $_SESSION['user_id'];
     } else {
-        // Se for admin vendo a carteirinha, precisaria passar ID? 
-        // Por simplificação versão v1, assume id da session mesmo, 
-        // mas admin não tem registro na tabela membros.
-        // Então admin verá "Exemplo" ou erro.
-        // Melhor: Redirecionar admin para lista de membros.
-        if (has_role('admin')) {
-            echo "<script>window.location.href='index.php?page=membros';</script>";
-            exit;
-        }
+        // Staff without link trying to access - Redirect
+        echo "<script>window.location.href='index.php?page=membros';</script>";
+        exit;
     }
 
     $stmt = $pdo->prepare("SELECT * FROM membros WHERE id = ?");

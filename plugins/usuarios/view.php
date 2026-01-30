@@ -25,42 +25,42 @@ if ($action === 'delete' && isset($_GET['id'])) {
     }
 }
 
-// --- LOGIC: SAVE / UPDATE ---
+// --- LOGIC: SAVE / UPDATE TYPE HANDLING ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 'update')) {
+    
+    // Fallback View Mode in case of error
+    $fallbackAction = ($action === 'save') ? 'new' : 'edit';
+    
     $id = $_POST['id'] ?? null;
     $nome = $_POST['nome'] ?? '';
     $email = $_POST['email'] ?? '';
     $senha = $_POST['senha'] ?? '';
     $nivel = $_POST['nivel'] ?? 'secretario';
     $sexo = $_POST['sexo'] ?? 'M';
+    $membro_id = !empty($_POST['membro_id']) ? $_POST['membro_id'] : null; // [NEW]
     $igreja_id = $_SESSION['igreja_id'];
 
     if ($id && $action === 'update') {
         // UPDATE
-        // Se senha fornecida, atualiza hash. Se não, mantém atual.
         if (!empty($senha)) {
             $hashed_pass = password_hash($senha, PASSWORD_DEFAULT);
-            $sql = "UPDATE usuarios SET nome=?, email=?, sexo=?, senha=?, nivel=? WHERE id=? AND igreja_id=?";
-            $params = [$nome, $email, $sexo, $hashed_pass, $nivel, $id, $igreja_id];
+            $sql = "UPDATE usuarios SET nome=?, email=?, sexo=?, senha=?, nivel=?, membro_id=? WHERE id=? AND igreja_id=?";
+            $params = [$nome, $email, $sexo, $hashed_pass, $nivel, $membro_id, $id, $igreja_id];
         } else {
-            $sql = "UPDATE usuarios SET nome=?, email=?, sexo=?, nivel=? WHERE id=? AND igreja_id=?";
-            $params = [$nome, $email, $sexo, $nivel, $id, $igreja_id];
+            $sql = "UPDATE usuarios SET nome=?, email=?, sexo=?, nivel=?, membro_id=? WHERE id=? AND igreja_id=?";
+            $params = [$nome, $email, $sexo, $nivel, $membro_id, $id, $igreja_id];
         }
 
         try {
             $stmt = $pdo->prepare($sql);
             if ($stmt->execute($params)) {
-                
                 // REFRESH SESSION IF EDITING SELF
                 if ($id == $_SESSION['user_id']) {
                     $_SESSION['user_name'] = $nome;
                     $_SESSION['user_email'] = $email;
                     $_SESSION['user_sexo'] = $sexo;
-                    // Note: Roles are usually arrays, simplified here for the level
-                    // Force refresh of roles might be needed if logic relies on it, 
-                    // but for now Sexo is the key for the Header label.
+                    $_SESSION['membro_id'] = $membro_id; // [NEW] Refresh connection
                 }
-
                 echo "<script>window.location.href='index.php?page=usuarios&msg=updated';</script>";
                 exit;
             }
@@ -70,20 +70,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
 
     } else {
         // INSERT
+        
+        // --- PLAN ENFORCER CHECK ---
+        if (!PlanEnforcer::canAdd($pdo, 'usuarios')) {
+             PlanEnforcer::renderUpgradeModal("Seu plano atingiu o limite de usuários/tesoureiros.");
+        }
+
         if (empty($senha)) {
             $error = "Senha é obrigatória para novos usuários.";
+            $action = $fallbackAction; // <--- Show Form
         } else {
             $hashed_pass = password_hash($senha, PASSWORD_DEFAULT);
-            $sql = "INSERT INTO usuarios (igreja_id, nome, email, sexo, senha, nivel) VALUES (?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO usuarios (igreja_id, nome, email, sexo, senha, nivel, membro_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
             try {
                 $stmt = $pdo->prepare($sql);
-                if ($stmt->execute([$igreja_id, $nome, $email, $sexo, $hashed_pass, $nivel])) {
+                if ($stmt->execute([$igreja_id, $nome, $email, $sexo, $hashed_pass, $nivel, $membro_id])) {
                     echo "<script>window.location.href='index.php?page=usuarios&msg=success';</script>";
                     exit;
                 }
             } catch (PDOException $e) {
                 // Provavelmente duplicidade de email
-                $error = "Erro ao criar (Email já existe?): " . $e->getMessage();
+                $error = "Erro ao criar: " . $e->getMessage();
+                $action = $fallbackAction; // <--- Show Form
             }
         }
     }
@@ -91,6 +99,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'save' || $action === 
 
 // --- VIEW: FORM ---
 if ($action === 'new' || $action === 'edit') {
+    
+    // Check Limit on NEW
+    if ($action === 'new' && !PlanEnforcer::canAdd($pdo, 'usuarios')) {
+         PlanEnforcer::renderUpgradeModal("Seu plano atingiu o limite de usuários/tesoureiros.");
+    }
+    
     $user = null;
     if ($action === 'edit' && isset($_GET['id'])) {
         $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = ? AND igreja_id = ?");
@@ -159,6 +173,29 @@ if ($action === 'new' || $action === 'edit') {
                         <option value="secretario" <?php echo $nivel === 'secretario' ? 'selected' : ''; ?>>Secretário (Apenas Membros)</option>
                     </select>
                 </div>
+            </div>
+
+            <!-- Vincular a Membro (Role Switch) -->
+            <?php
+            // Buscar membros para vincular
+            $stmtMembros = $pdo->prepare("SELECT id, nome FROM membros WHERE igreja_id = ? ORDER BY nome ASC");
+            $stmtMembros->execute([$_SESSION['igreja_id']]);
+            $listaMembros = $stmtMembros->fetchAll();
+            $membro_id = $user['membro_id'] ?? '';
+            ?>
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <label class="block text-gray-700 font-bold mb-2 flex items-center gap-2">
+                    <i class="fas fa-link text-blue-500"></i> Vincular a um Membro (Opcional)
+                </label>
+                <p class="text-sm text-gray-500 mb-2">Ao vincular, este usuário poderá alternar para sua visão de "Minha Carteirinha" e "Meu Perfil" sem sair do sistema.</p>
+                <select name="membro_id" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none bg-white">
+                    <option value="">-- Sem vínculo --</option>
+                    <?php foreach ($listaMembros as $lm): ?>
+                        <option value="<?php echo $lm['id']; ?>" <?php echo $membro_id == $lm['id'] ? 'selected' : ''; ?>>
+                            <?php echo e($lm['nome']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <script>

@@ -182,6 +182,14 @@ $secondaryColor = $tenant['cor_secundaria'] ?? '#1e40af';
             <?php endif; ?>
         </div>
 
+        <!-- Role Switch: Access Member Card -->
+        <?php if (!empty($_SESSION['membro_id'])): ?>
+            <a href="index.php?page=minha_carteirinha" class="text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition w-10 h-10 flex items-center justify-center relative group-hover" title="Minha Carteirinha">
+                <i class="fas fa-id-card"></i>
+                <span class="absolute -bottom-1 -right-1 bg-green-500 rounded-full w-3 h-3 border-2 border-white"></span>
+            </a>
+        <?php endif; ?>
+
         <a href="index.php?page=perfil" class="text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition w-10 h-10 flex items-center justify-center" title="Meu Perfil">
             <i class="fas fa-user"></i>
         </a>

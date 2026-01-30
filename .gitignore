@@ -13,3 +13,4 @@ debug_assinatura.php
 fix_planos.php
 migration_log.txt
 production_migration.php
+migrate.php

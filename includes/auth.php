@@ -47,6 +47,11 @@ function has_role($allowed_roles) {
 
     // Verifica se tem agum dos papeis
     foreach ($roles as $role) {
+        // [FIX] Se o papel exigido for 'Membro' e o usuário (Staff) estiver vinculado a um membro, permite.
+        if ($role === 'Membro' && !empty($_SESSION['membro_id'])) {
+            return true;
+        }
+
         if (in_array($role, $userRoles)) {
             return true;
         }
@@ -113,6 +118,7 @@ function login($pdo, $email, $senha) {
         
         $_SESSION['user_sexo'] = $user['sexo'] ?? 'M'; // Store Gender
         $_SESSION['user_type'] = 'staff';
+        $_SESSION['membro_id'] = $user['membro_id'] ?? null; // [NEW] Role Switch Link
         
         // --- CARREGAR PAPEIS E PERMISSÕES (RBAC) ---
         // Buscar papeis
